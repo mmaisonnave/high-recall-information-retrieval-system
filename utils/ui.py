@@ -31,7 +31,7 @@ class UI(object):
                                               disabled=False,
                                               )
 
-        self.session_name_text = widgets.Text(value='test4',
+        self.session_name_text = widgets.Text(value='serperi',
                                               placeholder='Type something',
                                               description='Session name:',
                                               disabled=False,
@@ -112,16 +112,21 @@ class UI(object):
         self.top_panel = widgets.VBox([self.init_panel, self.loop_panel], )
 #         self.top_panel = widgets.VBox([self.init_panel], ) 
         ################
-        # BOTTOM PANEL #
+        # BUTTON PANEL #
         ################
         self.debug=debug
-
-        self.descriptions = ['INIT', 'LOOP', 'SAVE', 'EXPORT', 'REVIEW']#, 'STATUS']
+        self.send_email_checkbox = Checkbox(value=False,
+                                              description='Send exports over email',
+                                              disabled=True,
+                                                indent=False,
+#                                               layout=widgets.Layout(border='solid 0.1px',),
+                                           )
+        self.descriptions = ['INIT', 'LOOP', 'SAVE','REVIEW', 'EXPORT'] #, 'REVIEW']#, 'STATUS']
         self.on_click_functions = [self.on_click_init, 
                                    self.on_click_loop, 
                                    self.on_click_save, 
-                                   self.on_click_export,
                                    self.on_click_review,
+                                   self.on_click_export,
 #                                    self.on_click_status
                                   ]
         self.buttons = [Button() for i in range(len(self.descriptions))]
@@ -136,12 +141,15 @@ class UI(object):
                 button.disabled=True
 #         for i in range(len(self.buttons)-1):
 #             self.buttons[i+1].disabled=True
-        self.bottom_panel = widgets.GridBox([HBox([button], layout=panel_layout) for button in self.buttons],
-                                 layout=widgets.Layout(grid_template_columns="repeat(5, 189px)",
+        self.bottom_panel = widgets.GridBox(self.buttons+[self.send_email_checkbox],#[HBox([button], layout=panel_layout) for button in self.buttons],
+                                 layout=widgets.Layout(grid_template_columns="repeat(4, 150px)",
                                                                 border='solid 0.1px',
-                                                                display='flex',
+#                                                                 display='flex',
+                                                                justify_content='space-around',
+                                                                flex_wrap='wrap',
                                                                 align_items='center',
-                                                                height='50px'))
+                                                                height='100px',
+                                                                ))
                                                                 
                                      
                                      
@@ -197,7 +205,7 @@ class UI(object):
             self._update_counters()
         for button in self.buttons:
             button.disabled=False
-
+        self.send_email_checkbox.disabled=False
     def on_click_init(self, button=None):
         self.loop_panel.layout.visibility="visible"
         def print_function(str_):
@@ -272,6 +280,7 @@ class UI(object):
 #         display(self.bottom_panel)
         self.system.export(suggestion_sample_size=self.int_sample_size.value, 
                            confidence_value=self.confidence_slider.value,
+                           send_email=self.send_email_checkbox.value,
                            )
         self.enable_buttons()
     def on_click_review(self, button=None):

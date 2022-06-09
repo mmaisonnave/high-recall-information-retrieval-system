@@ -16,6 +16,7 @@ from joblib import load,dump
 import logging
 import ipywidgets as widgets
 from utils.auxiliary import has_duplicated
+import shutil
 
 class HRSystem(object):
 #     EXPANSION=10
@@ -641,7 +642,7 @@ class HRSystem(object):
     ################################################################ 
     #                            EXPORT                            #   
     ################################################################  
-    def export(self, suggestion_sample_size=1000,  confidence_value=0.5):
+    def export(self, suggestion_sample_size=1000,  confidence_value=0.5, send_email=False):
         logging.debug('#'*30+' EXPORT '+'#'*30)
         self.confidence_value = confidence_value
         self.suggestion_sample_size =  suggestion_sample_size
@@ -684,7 +685,13 @@ class HRSystem(object):
 
             self.print_fn(f'[LOOP] Number of possible relevant article founds {count} (suggestions model)')
             logging.debug(f'Number of possible relevant article founds {count} (suggestions model)')
-
+        if send_email:
+            assert os.path.isfile(filename)
+            temp_file ='exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
+            shutil.copyfile(filename, temp_file)
+            assert os.path.isfile(temp_file)
+            os.system(f'aws s3 cp {temp_file} s3://pq-tdm-studio-results/tdm-ale-data/623/results/')
+            os.remove(temp_file)
         logging.debug('#'*30+' END EXPORT '+'#'*30)    
       
 #         logging.debug('#'*30+'END EXPORT'+'#'*30)
