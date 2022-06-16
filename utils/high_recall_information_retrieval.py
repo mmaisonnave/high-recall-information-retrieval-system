@@ -103,7 +103,8 @@ class HRSystem(object):
             self.print_fn('[INIT] System started.')
     #         self.save()
     #         self.status()                                     
-            logging.debug(' # # # System started succesfully. # # # ')
+#             logging.debug(' # # #. # # # ')
+            logging.debug('#'*30+'   END INIT  '+'#'*30)
 #             self.print_fn('[INIT] System started. Saving...[OK]')
             if not self.finish_function is None:
                 self.finish_function()
@@ -424,7 +425,10 @@ class HRSystem(object):
                 self._move_suggestions_to_labeled()
             if not self.finish_function is None:
                 self.finish_function()
-            self.loop_started=False
+            if self.loop_started: # LOOP NOT CANCELLED
+                logging.debug('#'*30+f'END LOOP {self.iteration_count:3}'+'#'*30) 
+                self.iteration_count+=1
+                self.loop_started=False
         self.print_fn('[LOOP] Calculating new suggestions...')
         self._compute_suggestions(full_search=full_search, one_iteration=one_iteration)
         self.print_fn('[LOOP] ')
@@ -447,8 +451,8 @@ class HRSystem(object):
                                              cancel_process_fn=self.cancel_loop,
                                              final_process_fn=after_labeling
                                             )
-            logging.debug('#'*30+f' END LOOP {self.iteration_count:3}'+'#'*30)  
-            self.iteration_count+=1
+#             logging.debug('#'*30+f' END LOOP {self.iteration_count:3}'+'#'*30)  
+            
         else:
             self.loop_started=False
             logging.info('No new suggestions found, nothing to do on loop, skipping.')
@@ -456,16 +460,17 @@ class HRSystem(object):
             self.finish_function()
                           
         
-            logging.debug('#'*30+f'END LOOP {self.iteration_count:3}'+'#'*30)  
+             
     def cancel_loop(self):
-        self.iteration_count-=1
+#         self.iteration_count-=1
         logging.debug('#'*30+f' LOOP CANCELLED (LOOP no. {self.iteration_count})'+'#'*30)
-        logging.debug(f'Reducing loop no ({self.iteration_count+1} - 1)={self.iteration_count}')
-        self.iteration_count-=1
+#         logging.debug(f'Reducing loop no ({self.iteration_count+1} - 1)={self.iteration_count}')
+#         self.iteration_count-=1
         logging.debug(f'Clearing list of candidates len(candidates)={len(self.candidate_args)} ({self._candidates_str()}).')
         self.print_fn('[CNCL] Canceling LOOP...')
         self.candidate_args = []
 #         self.print_fn('[CNCL] No new suggestions found, nothing to do on loop, skipping.')
+#         self.iteration_count-=1
                          
 
 
@@ -642,7 +647,7 @@ class HRSystem(object):
     ################################################################ 
     #                            EXPORT                            #   
     ################################################################  
-    def export(self, suggestion_sample_size=1000,  confidence_value=0.5, send_email=False):
+    def export(self, suggestion_sample_size=1000,  confidence_value=0.5, send_email=False, compute_suggestions=False):
         logging.debug('#'*30+' EXPORT '+'#'*30)
         self.confidence_value = confidence_value
         self.suggestion_sample_size =  suggestion_sample_size
@@ -664,7 +669,7 @@ class HRSystem(object):
                     writer.write(f'https://proquest.com/docview/{item.id_},rel,1\n')
             
 
-            self.print_fn(f'[LOOP] Number of articles relevant founds {count} (from labeled). Computing suggestions by the model...')
+            
             logging.debug(f'Number of articles relevant founds {count} (from labeled)')
         
             # MAKE PREDICTIONS AND STORE SUGGESTIONS....
@@ -675,23 +680,39 @@ class HRSystem(object):
 #                 fin = min(ini+batch,len(self.unlabeled_data))
 #                 args = list(range(ini,fin))
 #                 candidate_args, yhat = self._filter_and_sort_candidates(candidate_args)
-            candidate_args, yhat = self._search_suggestions(all_=True, progress_bar=True)
-            suggestions = list(zip([self.unlabeled_data[arg] for arg in candidate_args], yhat))
-            suggestions = sorted(suggestions, key=lambda x: x[1], reverse=True)
-            count=0
-            for item,confidence in suggestions:
-                count+=1
-                writer.write(f'https://proquest.com/docview/{item.id_},sugg,{confidence:4.3f}\n')
-
-            self.print_fn(f'[LOOP] Number of possible relevant article founds {count} (suggestions model)')
-            logging.debug(f'Number of possible relevant article founds {count} (suggestions model)')
+            status_str = ''
+            if compute_suggestions:   
+                status_str = f'[LOOP] Number of articles relevant founds {count} (from labeled). Computing suggestions by the model...'
+                self.print_fn(status_str)
+                candidate_args, yhat = self._search_suggestions(all_=True, progress_bar=True)
+                suggestions = list(zip([self.unlabeled_data[arg] for arg in candidate_args], yhat))
+                suggestions = sorted(suggestions, key=lambda x: x[1], reverse=True)
+                count=0
+                for item,confidence in suggestions:
+                    count+=1
+                    writer.write(f'https://proquest.com/docview/{item.id_},sugg,{confidence:4.3f}\n')
+                status_str = f'[LOOP] Number of possible relevant article founds {count} (suggestions model) [OK]'
+                self.print_fn(status_str)
+                logging.debug(f'Number of possible relevant article founds {count} (suggestions model)')
+            else:
+                status_str = f'[LOOP] Number of articles relevant founds {count} (from labeled). Skipping suggestions [OK]'
+                self.print_fn(status_str)
+                      
         if send_email:
             assert os.path.isfile(filename)
+            status_str+='. Sending email...'
+            self.print_fn(status_str)
             temp_file ='exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
             shutil.copyfile(filename, temp_file)
             assert os.path.isfile(temp_file)
             os.system(f'aws s3 cp {temp_file} s3://pq-tdm-studio-results/tdm-ale-data/623/results/')
             os.remove(temp_file)
+            logging.debug('E-mail sending enabled, email sent [OK].')
+            status_str+='[OK]'
+        else:
+            status_str+='. Skipping sending email [OK]'
+            logging.debug('E-mail sending disabled, skipping.')
+        self.print_fn(status_str)              
         logging.debug('#'*30+' END EXPORT '+'#'*30)    
       
 #         logging.debug('#'*30+'END EXPORT'+'#'*30)
