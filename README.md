@@ -1,1 +1,2 @@
-# high-recall-information-retrieval-system
+# high-recall-information-retrieval-system (HRIR)
+
