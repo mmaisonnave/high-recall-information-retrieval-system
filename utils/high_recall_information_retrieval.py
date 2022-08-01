@@ -3,10 +3,10 @@ import time
 import os
 from utils.data_item import DataItem
 import pandas as pd
-import numpy as np
+import numpy as np 
 import myversions.pigeonXT as pixt
 import pickle
-from utils.io import warning, html, request_user_input
+from utils.io import warning, html, request_user_input, info 
 import re
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
@@ -15,8 +15,8 @@ from utils.term_highlighter import TermHighlighter
 from joblib import load,dump
 import logging
 import ipywidgets as widgets
-from utils.auxiliary import has_duplicated
-import shutil
+from utils.auxiliary import has_duplicated  
+import shutil 
 
 class HRSystem(object):
 #     EXPANSION=10
@@ -33,9 +33,9 @@ class HRSystem(object):
 #         self.confidence_value = 0.5
         logging.basicConfig(filename=f'sessions/{session_name}/log/system.log', 
                             format='%(asctime)s [%(levelname)s] %(message)s' ,
-                            encoding='utf-8', 
+#                             encoding='utf-8',                # INVALID WHEN CHANGE ENV (IMM -> BERT)
                             datefmt='%Y-%m-%d %H:%M:%S',
-                            force=True,
+#                             force=True,                      # INVALID WHEN CHANGE ENV (IMM -> BERT)
                             level=logging.DEBUG)
         self.status=''
         logging.debug('#'*30+'  INIT  '+'#'*30)
@@ -112,6 +112,9 @@ class HRSystem(object):
 
 #     def set_confidence_value(self, value):
 #         self.confidence_value = value
+
+
+    
     def get_status(self):
         return self.status
     def get_labeled_count(self):
@@ -120,6 +123,8 @@ class HRSystem(object):
         return len(self.unlabeled_data)
     def get_relevant_count(self):
         return len([item for item in self.labeled_data if item.is_relevant()])
+    def get_irrelevant_count(self):
+        return len([item for item in self.labeled_data if  item.is_irrelevant()])
         
     #######################
     # LOAD MODELS ON INIT #
@@ -409,7 +414,8 @@ class HRSystem(object):
 
         assert not has_duplicated(ids_list)
         del(ids_list)
-        
+                                  
+        self.labeling_batch=labeling_batch_size
         self.loop_started=True
         self.confidence_value = confidence_value
         self.suggestion_sample_size = suggestion_sample_size
@@ -422,6 +428,7 @@ class HRSystem(object):
         ####################################################
         def after_labeling():
             if len(self.suggestions)>0:
+                print('Starting retraining...')
                 self._move_suggestions_to_labeled()
             if not self.finish_function is None:
                 self.finish_function()
@@ -634,6 +641,8 @@ class HRSystem(object):
             for arg in sorted(best_ten_args,reverse=True):
                 del(self.unlabeled_data[arg])
                 self.candidate_args = [arg2 if arg2<arg else arg2-1 for arg2 in self.candidate_args if arg2!=arg]
+                # REMOVE ALSO FROM YHAT!!!!
+                      
 
             logging.debug('Moving the suggestions made by the model from unlabeled_data --to--> suggestions')              
             logging.debug(f"new len(unlabeled_data)={len(self.unlabeled_data)} {self._unlabeled_data_str()}")
@@ -895,7 +904,7 @@ class HRSystem(object):
                       
         assert len(self.suggestions)==0
         highlighter = None
-        if self.term_highlighter.trained:
+        if self.term_highlighter.trained and how_many<=20:
             highlighter = self.term_highlighter
         text_for_label = [suggestion.get_htmldocview(highlighter=highlighter)
                           for suggestion in self.labeled_data[-how_many:]]

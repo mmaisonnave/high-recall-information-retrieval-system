@@ -3,7 +3,7 @@ from utils.high_recall_information_retrieval import HRSystem
 
 
 
-
+import os
 from IPython.display import display, clear_output
 import ipywidgets as widgets
 from ipywidgets import (
@@ -26,17 +26,27 @@ class UI(object):
         ##############
         # INIT PANEL #
         ##############
-        self.from_scratch_checkbox = Checkbox(value=False,
-                                              description='From scratch',
-                                              disabled=False,
-                                              )
+        self.from_scratch_radiobuttons = widgets.RadioButtons(options=['saved database (or DP database)', 'from scratch'],
+                                                          description='',
+                                                          disabled=False
+                                                         )
+#                                                 Checkbox(value=False,
+#                                               description='From scratch',
+#                                               disabled=False,
+#                                               )
 
-        self.session_name_text = widgets.Text(value='serperi',
-                                              placeholder='Type something',
-                                              description='Session name:',
-                                              disabled=False,
-                                              style={'description_width': 'initial'},
-                                              )
+        self.session_name_text = widgets.Combobox(placeholder='Select a saved session or enter new session name',
+                                                  options=os.listdir('sessions'),
+                                                  description='Session name:',
+                                                  ensure_option=False,
+                                                  style={'description_width': 'initial'},
+                                                  disabled=False)
+#                                     widgets.Text(value='serperi',
+#                                               placeholder='Type something',
+#                                               description='Session name:',
+#                                               disabled=False,
+#                                               style={'description_width': 'initial'},
+#                                               )
 
 
 
@@ -46,7 +56,7 @@ class UI(object):
                                         width='50%')
         
         self.init_panel = widgets.GridBox([HBox([self.session_name_text],layout=panel_layout),
-                                           HBox([self.from_scratch_checkbox],layout=panel_layout),
+                                           HBox([self.from_scratch_radiobuttons],layout=panel_layout),
                                           ], 
                                           layout=widgets.Layout(grid_template_columns="repeat(2, 475px)",
                                                                 border='solid 0.1px',
@@ -227,7 +237,7 @@ class UI(object):
         display(self.main_frame)
 #         display(self.right_panel)
 #         display(self.bottom_panel)
-        self.system = HRSystem(from_scratch=self.from_scratch_checkbox.value, 
+        self.system = HRSystem(from_scratch=self.from_scratch_radiobuttons.value=='from scratch', 
                                session_name=self.session_name_text.value,
                                finish_function=self.enable_buttons,
                                debug=self.debug,
@@ -278,6 +288,7 @@ class UI(object):
 #         display(self.right_panel)
 #         display(self.bottom_panel)
         self.system.save()
+        self.session_name_text.options=os.listdir('sessions')
         self.enable_buttons()
     def on_click_export(self, button=None):
         clear_output(wait=False)
