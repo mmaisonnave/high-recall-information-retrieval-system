@@ -155,7 +155,7 @@ class HRSystem(object):
             yhats.append(linear_model.predict_proba(X)[:,1])
         return np.hstack(yhats)
     def _estimated_relevant_u(self):
-        return self._optimized_logreg_prediction(self.unlabeled_data[:200000])
+        return self._optimized_logreg_prediction(self.unlabeled_data)
 #         unlabeled_vecnames = [item._vector_filename() for item in self.unlabeled_data]
 #         linear_model = self.term_highlighter.model
 #         yhat = np.zeros(shape=(len(unlabeled_vecnames)))
