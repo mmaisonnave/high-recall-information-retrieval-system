@@ -198,6 +198,7 @@ class HRSystem(object):
         Ur = self._estimated_relevant_u()
         return Quant_estimator(Rr, Ur)
 
+    
     def get_status(self):
         return self.status
     def get_labeled_count(self):
