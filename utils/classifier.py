@@ -52,6 +52,86 @@ class Classifier(object):
         serie = pd.DataFrame(scores).mean()
         return dict([(metric,serie[metric]) for metric in serie.index])
     
+    
+    
+# [START] Transformer-based Model
+from utils.auxiliary import module_exists
+if module_exists('datasets'):
+    from datasets import Dataset
+
+    
+from transformers import AutoModelForSequenceClassification
+from transformers import AutoTokenizer, DataCollatorWithPadding
+import numpy as np
+from transformers import TrainingArguments
+from transformers import Trainer
+import os
+class HFModel(object):
+    models_path='/home/ec2-user/SageMaker/mariano/huggingface/pretrained/'
+    def __init__(self ,model_name, training_args=None,):           
+        self.training_args = training_args
+        if training_args is None:
+            self.training_args = TrainingArguments("test-trainer",num_train_epochs=15)
+        self.trained=False
+        self.pretrain_model_path = HFModel.models_path+model_name+'/'
+        assert os.path.exists(self.pretrain_model_path+'model/') and os.path.exists(self.pretrain_model_path+'tokenizer/'),'Model not found' 
+
+
+        
+    def fit(self, item_list):
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(self.pretrain_model_path+'tokenizer/')
+        model = AutoModelForSequenceClassification.from_pretrained(self.pretrain_model_path+'model/', num_labels=2)
+        
+        y = DataItem.get_y(item_list)
+        X = DataItem.get_X(item_list)
+
+
+        data = {'sentence': X,
+                'label': y
+               }
+        train_data = Dataset.from_dict(data)
+        def tokenize_function(example):
+            return self.tokenizer(example["sentence"], truncation=True)
+        
+        tokenized_dataset = train_data.map(tokenize_function, batched=True)
+
+        data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
+
+        trainer = Trainer(
+            model,
+            self.training_args,
+            train_dataset=tokenized_dataset,
+            data_collator=data_collator,
+            tokenizer=self.tokenizer,
+        )
+        output = trainer.train()
+        self.trainer = trainer
+        self.model = model
+        self.trained=True
+        return output
+    
+#     def get_X(text_list):
+#         return np.array(text_list)
+    
+    def predict(self, item_list):
+        assert self.trained
+        data = {'sentence':[text for text in DataItem.get_texts(item_list)]
+               }
+        dataset = Dataset.from_dict(data)
+
+        def tokenize_function(example):
+            return self.tokenizer(example["sentence"], truncation=True)
+        
+        tokenized_dataset = dataset.map(tokenize_function, batched=True)
+        predictions = self.trainer.predict(tokenized_dataset)
+
+        
+        return np.argmax(predictions.predictions, axis=-1)
+    
+
+# [END]   Transformer-based Model
+    
 from sklearn.neural_network import MLPClassifier
 
 

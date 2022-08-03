@@ -24,7 +24,8 @@ class TermHighlighter(object):
         
         X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
         y = DataItem.get_y(item_list)
-        
+#         self.mean_value_feature = np.average(X,axis=0)
+        self.compute_mean_value_feature(item_list=None, X=X)
         self.model.fit(X,y)
         
         term_score = [(term,coef) for term,coef in zip(self.vocab, np.abs(self.model.coef_[0,:]))]
@@ -32,37 +33,86 @@ class TermHighlighter(object):
         term_score = term_score[:self.keep_top]
         self.term2coef = dict(term_score)
         self.trained=True
+    def compute_mean_value_feature(self, item_list=None, X=None):
+        if X is None:
+            assert not item_list is None
+            X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
+        self.mean_value_feature =np.average(X.toarray(),axis=0)
         
     def __str__(self):
         return f'<TermHighlighter model={self.model} trained={self.trained} vocab=<{self.vocab[0]}, ..., {self.vocab[1]}>>'
+    
+    
     def predict(self,item_list):
         assert self.trained
-        
-        X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
-        return self.model.predict_proba(X)[:,1]
+        max_mem_size_MB = 3072 # 3GB
+#         vec = DataItem.get_X(item_list[:1], type_=DataItem.TYPE_BOW)
+        vec_size = DataItem.get_vec_size(type_=DataItem.TYPE_BOW)
+        instance_size_MB = (((vec_size*4)/1024)/1024)
+        if instance_size_MB*len(item_list) <= max_mem_size_MB:
+            X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
+            return self.model.predict_proba(X)[:,1]
+        else:
+            yhat = np.zeros(shape=(len(item_list)))
+            batch_size = int(max_mem_size_MB / instance_size_MB)
+            for ini in range(0, len(item_list), batch_size):
+                fin = ini+batch_size 
+                X = DataItem.get_X(item_list[ini:fin], type_=DataItem.TYPE_BOW)
+                yhat[ini:fin] = self.model.predict_proba(X)[:,1]
+            return yhat
+#         return self.model.predict_proba(X)[:,1]
     
-    def highlight(self, text):
+    def highlight_coefficients(self,data_item):
+        vec = data_item.vector(type_=DataItem.TYPE_BOW)
+        coefs = self.model.coef_[0,:]
+        mean_values = self.mean_value_feature
+        result = coefs*(vec - mean_values)
+        assert result.shape==(10000,)
+        return result
+    
+    def highlight(self, text, data_item):
+        term_score = [(term,coef) for term,coef in zip(self.vocab, self.highlight_coefficients(data_item) )]
+        term_score = sorted(term_score , key=lambda x:x[1],reverse=True)
+#         term_score = term_score[:self.keep_top]
+        term2coef = dict(term_score)
+        
         
         doc = self.nlp(text)
-        tokens = np.array([token for token in doc if token.lemma_.lower() in self.term2coef])
-        scores = np.array([self.term2coef[token.lemma_.lower()] for token in tokens])
+        tokens = np.array([token for token in doc if token.lemma_.lower() in term2coef])
+        scores = np.array([term2coef[token.lemma_.lower()] for token in tokens])
         
         tokens = tokens[np.argsort(scores)][::-1]
         index_pairs = []
-        visited=set()
+        coefs=[]
+#         visited=set()
         idx=0
-        while len(visited)<self.terms_per_article and  idx<len(tokens):
+        while idx<len(tokens):
             index_pairs.append((tokens[idx].idx,tokens[idx].idx+len(tokens[idx].text),))
-            visited.add(tokens[idx].lemma_.lower())
+            coefs.append(term2coef[tokens[idx].lemma_.lower()])
+#             visited.add(tokens[idx].lemma_.lower())
             idx+=1
             
-        return TermHighlighter._highlight(text, index_pairs)
+        return TermHighlighter._highlight(text, index_pairs, coefs)
     
-    def _highlight(text, index_pairs):
-        index_pairs = sorted(index_pairs, key=lambda x:x[0], reverse=True)
-        for ini,fin in index_pairs:
-            len_ = fin-ini
-            text = text[:ini] +'<mark style="background-color:rgb(255,110,110)">'+text[ini:fin]+'</mark>' +text[ini+len_:]
+    def _highlight(text, index_pairs, coefs):
+        if len(index_pairs)>0:
+            signs = np.array(coefs)>0
+            coefs = np.abs(coefs)
+            coefs = coefs/max(coefs)
+            index_pairs = sorted(index_pairs, key=lambda x:x[0], reverse=True)
+            pos=0
+            for ini,fin in index_pairs:
+                coef = coefs[pos]
+                sign = signs[pos]
+    #             full_color = 255 - 255*coef
+                len_ = fin-ini
+                if sign:
+                    middle_color = 255 - 145*coef
+                    text = text[:ini] +f'<mark style="background-color:rgb({255},{middle_color},{middle_color})">'+text[ini:fin]+'</mark>' +text[ini+len_:]
+                else:
+                    middle_color = 255 - 255*coef
+                    text = text[:ini] +f'<mark style="background-color:rgb({middle_color},{255},{middle_color})">'+text[ini:fin]+'</mark>' +text[ini+len_:]
+                pos+=1
         return text
     
     def sorted_terms(self):

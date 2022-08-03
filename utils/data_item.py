@@ -17,6 +17,7 @@ class DataItem(object):
     TYPE_GLOVE300 = 'G3'
     TYPE_GLOVE600 = 'G6'
     TYPE_BOW = 'B'
+    TYPE_HGGFC = 'HF'
     
     GM1 = '/home/ec2-user/SageMaker/data/GM_all_1945_1956/'
     GM2 = '/home/ec2-user/SageMaker/data/GM_all_1957-1967/'
@@ -46,7 +47,15 @@ class DataItem(object):
         if type_ not in self._preloaded_vector:
             self._preloaded_vector[type_] = self.vector(type_=type_)
 
-            
+    def get_vec_size(type_=TYPE_BOW):
+        assert type_!= DataItem.TYPE_HGGFC, 'Hugging Face Models do not have a fixed vec size'
+        if type_==DataItem.TYPE_BOW:
+            return 10000
+        elif type_==DataItem.TYPE_GLOVE300:
+            return 300
+        elif type_==DataItem.TYPE_GLOVE600:
+            return 600
+        
     def get_htmldocview(self, highlighter=None, confidence_score=None):
         tree = etree.parse(self.filename())
         root = tree.getroot()
@@ -63,8 +72,8 @@ class DataItem(object):
         if not highlighter is None:
             text = html.unescape(text)
             text = BeautifulSoup(text, parser='html.parser',features="lxml").get_text()
-            title = highlighter.highlight(title)
-            text = highlighter.highlight(text)
+            title = highlighter.highlight(title, self)
+            text = highlighter.highlight(text, self)
 
         if not confidence_score is None:
             confidence_score_str = f'{confidence_score:4.3f}'
@@ -115,7 +124,10 @@ class DataItem(object):
             elif type_==DataItem.TYPE_GLOVE300:
                 x = data[0]
                 assert x.shape==(300,)
+            elif type_==DataItem.TYPE_HGGFC:
+                x = get_texts([self])
             else:
+                assert type_==DataItem.TYPE_GLOVE600
                 x = data[1]
                 assert x.shape==(600,)
                
@@ -130,20 +142,53 @@ class DataItem(object):
     
     def get_X(item_list, type_=TYPE_BOW):
         assert all([item.has_vector() for item in item_list])
-        
-        X = np.zeros(shape=(len(item_list),item_list[0].vector(type_=type_).shape[0]),dtype='float32')
-            
-        for idx,item in enumerate(item_list):
-            X[idx,:] = item.vector(type_=type_)
-            
-        if type_==DataItem.TYPE_BOW:
-            X = csr_matrix(X)
-        return X
-    def get_y(item_list):
+        if type_==DataItem.TYPE_HGGFC:
+            return get_texts(item_list)
+        else:
+            X = np.zeros(shape=(len(item_list),item_list[0].vector(type_=type_).shape[0]),dtype='float32')
+
+            for idx,item in enumerate(item_list):
+                X[idx,:] = item.vector(type_=type_)
+
+            if type_==DataItem.TYPE_BOW:
+                X = csr_matrix(X)
+            return X
+    
+    def get_texts(item_list):
+        texts = []
+        for item in item_list:
+            tree = etree.parse(item.filename())
+            root = tree.getroot()
+            if root.find('.//HiddenText') is not None:
+                text = (root.find('.//HiddenText').text)
+
+            elif root.find('.//Text') is not None:
+                text = (root.find('.//Text').text)
+
+            else:
+                text = None
+            title = root.find('.//Title').text
+            concated_text = ''
+            if not title is None:
+                concated_text = f'{title}. '
+            if not text is None:
+                concated_text += f'{text}'
+            texts.append(concated_text)                
+        return texts
+    
+    def get_y(item_list, type_=TYPE_BOW):
         assert all([item.label!=DataItem.UNK_LABEL for item in item_list])
+        
+
         y = np.zeros(shape=(len(item_list),))
         for idx,item in enumerate(item_list):
             y[idx] = 1 if item.label==DataItem.REL_LABEL else 0
+        
+        if type_==DataItem.TYPE_HGGFC:
+            new_y = np.zeros(shape=(len(y),2))
+            for idx, arg in enumerate(y):
+                new_y[idx,int(arg)]=1
+            y = new_y
         return y
     
     def __eq__(self, other):
@@ -151,12 +196,30 @@ class DataItem(object):
 
     def is_relevant(self):
         return self.label==DataItem.REL_LABEL
+    def is_irrelevant(self):
+        return self.label==DataItem.IREL_LABEL
     def set_relevant(self):
         self.label = DataItem.REL_LABEL
     def set_irrelevant(self):
-        self.label = DataItem.IREL_LABEL
+        self.label = DataItem.IREL_LABEL        
+    def set_unknown(self):
+        self.label = DataItem.UNK_LABEL
         
-        
+    def set_date(self, date):
+        self.date=date
+    def valid_date(self):
+        return hasattr(self,'date')
+    def get_date(self):
+        assert self.valid_date()
+        return self.date
+    
+    def set_confidence(self, confidence):
+        self.date=confidence
+    def valid_confidence(self):
+        return hasattr(self,'confidence')
+    def get_confidence(self):
+        assert self.valid_confidence()
+        return self.confidence
 ##########################################################################################
 #                                         TESTER                                         #
 ##########################################################################################

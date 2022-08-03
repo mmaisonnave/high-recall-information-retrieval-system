@@ -1,9 +1,8 @@
 from utils.high_recall_information_retrieval import HRSystem
+from bs4 import BeautifulSoup
 
 
-
-
-
+import os
 from IPython.display import display, clear_output
 import ipywidgets as widgets
 from ipywidgets import (
@@ -26,17 +25,27 @@ class UI(object):
         ##############
         # INIT PANEL #
         ##############
-        self.from_scratch_checkbox = Checkbox(value=False,
-                                              description='From scratch',
-                                              disabled=False,
-                                              )
+        self.from_scratch_radiobuttons = widgets.RadioButtons(options=['saved database (or DP database)', 'from scratch'],
+                                                          description='',
+                                                          disabled=False
+                                                         )
+#                                                 Checkbox(value=False,
+#                                               description='From scratch',
+#                                               disabled=False,
+#                                               )
 
-        self.session_name_text = widgets.Text(value='serperi',
-                                              placeholder='Type something',
-                                              description='Session name:',
-                                              disabled=False,
-                                              style={'description_width': 'initial'},
-                                              )
+        self.session_name_text = widgets.Combobox(placeholder='Select a saved session or enter new session name',
+                                                  options=os.listdir('sessions'),
+                                                  description='Session name:',
+                                                  ensure_option=False,
+                                                  style={'description_width': 'initial'},
+                                                  disabled=False)
+#                                     widgets.Text(value='serperi',
+#                                               placeholder='Type something',
+#                                               description='Session name:',
+#                                               disabled=False,
+#                                               style={'description_width': 'initial'},
+#                                               )
 
 
 
@@ -46,7 +55,7 @@ class UI(object):
                                         width='50%')
         
         self.init_panel = widgets.GridBox([HBox([self.session_name_text],layout=panel_layout),
-                                           HBox([self.from_scratch_checkbox],layout=panel_layout),
+                                           HBox([self.from_scratch_radiobuttons],layout=panel_layout),
                                           ], 
                                           layout=widgets.Layout(grid_template_columns="repeat(2, 475px)",
                                                                 border='solid 0.1px',
@@ -165,15 +174,18 @@ class UI(object):
         
         self.labeled_count_label = widgets.Label(value='')
         self.unlabeled_count_label = widgets.Label(value='')
+        self.stopping_point_label = widgets.HTML(value='')
         
         panel_layout = widgets.Layout(
                                         align_items='center',
                                         width='50%')
-        boxes = [widgets.HBox([widgets.Label(value='Labeled count: '), self.labeled_count_label],layout=panel_layout),
-                 widgets.HBox([widgets.Label(value='Unlabeled count: '), self.unlabeled_count_label],layout=panel_layout)]
+        boxes = [widgets.HBox([widgets.Label(value='Labeled size: '), self.labeled_count_label],layout=panel_layout),
+                 widgets.HBox([widgets.Label(value='Unlabeled size: '), self.unlabeled_count_label],layout=panel_layout),
+                 widgets.HBox([self.stopping_point_label], layout=panel_layout)]
+#                  widgets.HBox([widgets.Label(value='<computing stopping point>'), self.stopping_point_label], layout=panel_layout)]
         
         self.count_box = widgets.GridBox(boxes,
-                                 layout=widgets.Layout(grid_template_columns="repeat(2, 475px)",
+                                 layout=widgets.Layout(grid_template_columns="repeat(3, 316px)",
 #                                                                 border='solid 0.1px',
                                                                 display='flex',
                                                                 align_items='center',
@@ -185,6 +197,29 @@ class UI(object):
 #             for elem in box.children:
 #                 elem.layout.visible=False
 
+#     def launch_estimator(self):
+        
+#         def thread_function(widget):
+#             estimated = self.system.estimated_recall()*100
+#             widget.value=f'Est. recall: {estimated:>5.2f} %'
+            
+#         # Thread launch linked to widget 
+#         x = threading.Thread(target=thread_function, args=(self.stopping_point_label,))
+# #         thread_function(self.stopping_point_label)
+#         x.start()
+    def update_color_estimated_recall(self, color):
+        assert color=='red' or color=='green'
+        current = BeautifulSoup(self.stopping_point_label.value, 'html.parser').get_text()
+        if current=='':
+            current='Estimating recall...'
+        if color=='red':
+            self.stopping_point_label.value='<mark style="background-color:rgb(255,110,110)">'+current+'</mark>'
+        elif color=='green':
+            self.stopping_point_label.value='<mark style="background-color:rgb(110,255,110)">'+current+'</mark>'
+            
+    def update_recall_estimator(self, value):
+        self.stopping_point_label.value = f'Est. recall: {value:>5.2f} %'
+        
     def disable_buttons(self):
         for  box in self.init_panel.children:
             for elem in box.children:
@@ -198,6 +233,7 @@ class UI(object):
         self.include_suggestions_checkbox.disabled=True
         self.include_suggestions_checkbox.disabled=True
     def enable_buttons(self):
+        # FINISH FUNCTION
         for button in self.buttons:
             if button.description=='CANCEL':
                 button.description='LOOP'
@@ -227,22 +263,26 @@ class UI(object):
         display(self.main_frame)
 #         display(self.right_panel)
 #         display(self.bottom_panel)
-        self.system = HRSystem(from_scratch=self.from_scratch_checkbox.value, 
+        self.system = HRSystem(from_scratch=self.from_scratch_radiobuttons.value=='from scratch', 
                                session_name=self.session_name_text.value,
                                finish_function=self.enable_buttons,
                                debug=self.debug,
                                print_function=print_function,
+                               ui=self,
                               )  
         self._update_counters()
         self.buttons[0].description='RE-INIT'
+#         self.set_estimator_widget(self.stopping_point_label)
 
     def _update_counters(self):   
         labeled_count = self.system.get_labeled_count()
         unlabeled_count = self.system.get_unlabeled_count()
         relevant_count = self.system.get_relevant_count()
         irrelevant_count = labeled_count-relevant_count
-        self.labeled_count_label.value=value=f'{labeled_count:12,} ({relevant_count:12,} relevant / {irrelevant_count:12,} irrelevant )'
+#         self.labeled_count_label.value=value=f'{labeled_count:12,} ({relevant_count:12,} relevant / {irrelevant_count:12,} irrelevant )'
+        self.labeled_count_label.value=f'{labeled_count:12,} ({relevant_count:12,} relevant / {irrelevant_count:12,} irrelevant )'
         self.unlabeled_count_label.value = f'{unlabeled_count:12,}'
+#         self.launch_estimator()
     def on_click_loop(self,button=None):        
         
         clear_output(wait=False)
@@ -269,7 +309,8 @@ class UI(object):
 #             button.description='LOOP'
 #             self.enable_buttons()
 #             display(self.main_frame)
-            
+#         self.model_updated=True
+        
     def on_click_save(self, button=None):
         clear_output(wait=False)
         self.disable_buttons()
@@ -278,6 +319,7 @@ class UI(object):
 #         display(self.right_panel)
 #         display(self.bottom_panel)
         self.system.save()
+        self.session_name_text.options=os.listdir('sessions')
         self.enable_buttons()
     def on_click_export(self, button=None):
         clear_output(wait=False)

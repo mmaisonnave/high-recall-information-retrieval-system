@@ -3,10 +3,10 @@ import time
 import os
 from utils.data_item import DataItem
 import pandas as pd
-import numpy as np
+import numpy as np 
 import myversions.pigeonXT as pixt
 import pickle
-from utils.io import warning, html, request_user_input
+from utils.io import warning, html, request_user_input, info 
 import re
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
@@ -15,14 +15,21 @@ from utils.term_highlighter import TermHighlighter
 from joblib import load,dump
 import logging
 import ipywidgets as widgets
-from utils.auxiliary import has_duplicated
-import shutil
+from utils.auxiliary import has_duplicated  
+import shutil 
+from scipy import sparse
+from sklearn.preprocessing import normalize
+from utils.stopping_point import Quant_estimator
+import threading
 
 class HRSystem(object):
 #     EXPANSION=10
     RELEVANT_LABEL='Relevant'
     IRRELEVANT_LABEL='Irrelevant'
-    def __init__(self, from_scratch=False, session_name='default', finish_function=None, debug=False,print_function=None):
+    def __init__(self, from_scratch=False, session_name='default', finish_function=None, debug=False,print_function=None, ui=None):
+        self.thread_count=0
+        self.lock = threading.Lock()
+        self.ui = ui
         self.loop_started=False
         if not os.path.exists(f'sessions/{session_name}'):
             logging.debug('Session directories do not exist, creating (data, log, models).')
@@ -33,9 +40,9 @@ class HRSystem(object):
 #         self.confidence_value = 0.5
         logging.basicConfig(filename=f'sessions/{session_name}/log/system.log', 
                             format='%(asctime)s [%(levelname)s] %(message)s' ,
-                            encoding='utf-8', 
+#                             encoding='utf-8',                # INVALID WHEN CHANGE ENV (IMM -> BERT)
                             datefmt='%Y-%m-%d %H:%M:%S',
-                            force=True,
+#                             force=True,                      # INVALID WHEN CHANGE ENV (IMM -> BERT)
                             level=logging.DEBUG)
         self.status=''
         logging.debug('#'*30+'  INIT  '+'#'*30)
@@ -100,6 +107,7 @@ class HRSystem(object):
 
             self.print_fn('[INIT] Loading/training models...')
             self._load_models()
+            self._launch_estimator()
             self.print_fn('[INIT] System started.')
     #         self.save()
     #         self.status()                                     
@@ -112,6 +120,84 @@ class HRSystem(object):
 
 #     def set_confidence_value(self, value):
 #         self.confidence_value = value
+
+
+    def _launch_estimator(self):
+        def thread_function():
+            self.lock.acquire()
+            self.thread_count+=1
+            self.lock.release()
+            
+            self.ui.update_color_estimated_recall('red')
+            estimated = self.estimated_recall()*100
+            self.ui.update_recall_estimator(estimated)
+            
+            self.lock.acquire()
+            self.thread_count-=1
+            self.lock.release()
+            if self.thread_count==0:
+                self.ui.update_color_estimated_recall('green')  
+            
+
+        # Thread launch linked to widget 
+        x = threading.Thread(target=thread_function)
+        x.start()
+
+    def _optimized_logreg_prediction(self, item_list, batch_size=80530):
+        linear_model = self.term_highlighter.model
+        vecnames = [item._vector_filename() for item in item_list]
+
+        yhat = np.zeros(shape=(len(vecnames)))
+        yhats = []
+        for ini in range(0,len(vecnames), batch_size):
+            fin = min(ini+batch_size, len(vecnames))
+            X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[3], vecnames[ini:fin])),axis=1)
+            yhats.append(linear_model.predict_proba(X)[:,1])
+        return np.hstack(yhats)
+    def _estimated_relevant_u(self):
+        return self._optimized_logreg_prediction(self.unlabeled_data[:200000])
+#         unlabeled_vecnames = [item._vector_filename() for item in self.unlabeled_data]
+#         linear_model = self.term_highlighter.model
+#         yhat = np.zeros(shape=(len(unlabeled_vecnames)))
+#         yhats = []
+#         batch_size=80530
+#         for ini in range(0,len(unlabeled_vecnames), batch_size):
+#             fin = min(ini+batch_size, len(unlabeled_vecnames))
+#             X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[3], unlabeled_vecnames[ini:fin])),axis=1)
+#             yhats.append(linear_model.predict_proba(X)[:,1])
+#         return np.hstack(yhats)
+#     def _estimated_relevant_u(self):
+#         return self._optimized_logreg_prediction(self.unlabeled_data)
+#         unlabeled_vecnames = [item._vector_filename() for item in self.unlabeled_data]
+#         linear_model = self.term_highlighter.model
+#         yhat = np.zeros(shape=(len(unlabeled_vecnames)))
+#         yhats = []
+#         batch_size=80530
+#         for ini in range(0,len(unlabeled_vecnames), batch_size):
+#             fin = min(ini+batch_size, len(unlabeled_vecnames))
+#             X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[3], unlabeled_vecnames[ini:fin])),axis=1)
+#             yhats.append(linear_model.predict_proba(X)[:,1])
+#         self.full_yhat=np.hstack(yhats)
+#         return self.full_yhat
+    
+    def _estimated_relevant_r(self):
+        
+        return self._optimized_logreg_prediction(self.labeled_data)
+#         labeled_vecnames = [item._vector_filename() for item in self.labeled_data]
+#         linear_model = self.term_highlighter.model
+#         yhat = np.zeros(shape=(len(labeled_vecnames)))
+#         yhats = []
+#         batch_size=80530
+#         for ini in range(0,len(labeled_vecnames), batch_size):
+#             fin = min(ini+batch_size, len(labeled_vecnames))
+#             X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[3], labeled_vecnames[ini:fin])),axis=1)
+#             yhats.append(linear_model.predict_proba(X)[:,1])
+#         return np.hstack(yhats)
+    def estimated_recall(self):
+        Rr = self._estimated_relevant_r()
+        Ur = self._estimated_relevant_u()
+        return Quant_estimator(Rr, Ur)
+
     def get_status(self):
         return self.status
     def get_labeled_count(self):
@@ -120,6 +206,8 @@ class HRSystem(object):
         return len(self.unlabeled_data)
     def get_relevant_count(self):
         return len([item for item in self.labeled_data if item.is_relevant()])
+    def get_irrelevant_count(self):
+        return len([item for item in self.labeled_data if  item.is_irrelevant()])
         
     #######################
     # LOAD MODELS ON INIT #
@@ -162,6 +250,10 @@ class HRSystem(object):
             logging.debug('Loading models from disk. No need for training.')
             assert os.path.isfile(self.highlighter_path)
             self._models_fromdisk()
+            ## LEGACY BEHAVIOUR TO HAVE COMPATBILITY BACKWARDS.
+            if self.term_highlighter.trained and not hasattr(self.term_highlighter, 'mean_value_feature'): 
+                # trained but without info to compute new highlighting
+                self.term_highlighter.compute_mean_value_feature(item_list=self.labeled_data,X=None)
             
     def _load_data(self,from_scratch):
         ################
@@ -409,7 +501,8 @@ class HRSystem(object):
 
         assert not has_duplicated(ids_list)
         del(ids_list)
-        
+                                  
+        self.labeling_batch=labeling_batch_size
         self.loop_started=True
         self.confidence_value = confidence_value
         self.suggestion_sample_size = suggestion_sample_size
@@ -422,6 +515,7 @@ class HRSystem(object):
         ####################################################
         def after_labeling():
             if len(self.suggestions)>0:
+                print('Starting retraining...')
                 self._move_suggestions_to_labeled()
             if not self.finish_function is None:
                 self.finish_function()
@@ -488,7 +582,8 @@ class HRSystem(object):
     def _filter_and_sort_candidates(self,candidate_args):                                     
         # First Model        
 #         yhat1 = self.classifiers[0].predict([self.unlabeled_data[arg] for arg in candidate_args])
-        yhat1 = self.term_highlighter.predict([self.unlabeled_data[arg] for arg in candidate_args])                
+#         yhat1 = self.term_highlighter.predict([self.unlabeled_data[arg] for arg in candidate_args])                
+        yhat1 = self._optimized_logreg_prediction([self.unlabeled_data[arg] for arg in candidate_args]) #self.term_highlighter.predict([self.unlabeled_data[arg] for arg in candidate_args])                
         candidate_args = np.array(candidate_args)[yhat1>self.confidence_value]
         logging.debug(f'Number of suggestions 1st model (highlighter): {np.sum(yhat1>self.confidence_value)} (discarded: {np.sum(yhat1<=self.confidence_value)})')
                          
@@ -560,7 +655,7 @@ class HRSystem(object):
         logging.debug('Training term highlighter.')
         self.term_highlighter.fit(self.labeled_data)
         logging.debug('Done training.')
-                     
+        self._launch_estimator()             
         
         if expanded:
                 logging.debug('Removing randomly selected negatives examples (expansion)'\
@@ -634,6 +729,8 @@ class HRSystem(object):
             for arg in sorted(best_ten_args,reverse=True):
                 del(self.unlabeled_data[arg])
                 self.candidate_args = [arg2 if arg2<arg else arg2-1 for arg2 in self.candidate_args if arg2!=arg]
+                # REMOVE ALSO FROM YHAT!!!!
+                      
 
             logging.debug('Moving the suggestions made by the model from unlabeled_data --to--> suggestions')              
             logging.debug(f"new len(unlabeled_data)={len(self.unlabeled_data)} {self._unlabeled_data_str()}")
@@ -895,7 +992,7 @@ class HRSystem(object):
                       
         assert len(self.suggestions)==0
         highlighter = None
-        if self.term_highlighter.trained:
+        if self.term_highlighter.trained and how_many<=20:
             highlighter = self.term_highlighter
         text_for_label = [suggestion.get_htmldocview(highlighter=highlighter)
                           for suggestion in self.labeled_data[-how_many:]]
