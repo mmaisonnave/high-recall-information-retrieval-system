@@ -1,13 +1,17 @@
 import os
 from lxml import etree
+from bs4 import BeautifulSoup
 import pickle
 import numpy as np
 import html
-from bs4 import BeautifulSoup
 from sklearn.preprocessing import normalize
 from scipy.sparse import csr_matrix
+import spacy
+import string
 
 
+
+    
 class DataItem(object):
     vectors_path = '/home/ec2-user/SageMaker/mariano/notebooks/04. Model of DP/precomputed/'
     UNK_LABEL = 'U'
@@ -23,7 +27,9 @@ class DataItem(object):
     GM2 = '/home/ec2-user/SageMaker/data/GM_all_1957-1967/'
     
     GM1_SET = set([f[:-4] for f in os.listdir(GM1)])
-    
+
+
+
     def __init__(self, *args):
         self._preloaded_vector={}
         if os.path.isfile(args[0]):
@@ -38,7 +44,7 @@ class DataItem(object):
                 assert source=="GM1" or source=="GM2"
             else:
                 source = "GM1" if id_ in DataItem.GM1_SET else "GM2"
-            assert id_.isnumeric()
+            assert id_.isnumeric(), f'id={id_} - type(id_)={type(id_)}'
             self.id_ = id_
             self.source = source
             self.label = DataItem.UNK_LABEL            
@@ -46,7 +52,15 @@ class DataItem(object):
     def preload_vector(self, type_=TYPE_BOW):
         if type_ not in self._preloaded_vector:
             self._preloaded_vector[type_] = self.vector(type_=type_)
+            
 
+    def _dict(self):
+        return {'id': self.id_, 'source':self.source, 'label': self.label}
+    def from_dict(dict_):
+        item = DataItem(dict_['id'])        
+        item.label = dict_['label']
+        return item
+        
     def get_vec_size(type_=TYPE_BOW):
         assert type_!= DataItem.TYPE_HGGFC, 'Hugging Face Models do not have a fixed vec size'
         if type_==DataItem.TYPE_BOW:
@@ -56,6 +70,8 @@ class DataItem(object):
         elif type_==DataItem.TYPE_GLOVE600:
             return 600
         
+
+    
     def get_htmldocview(self, highlighter=None, confidence_score=None):
         tree = etree.parse(self.filename())
         root = tree.getroot()
@@ -106,10 +122,16 @@ class DataItem(object):
         return filename
     
     def has_vector(self):
-        _has_vector = os.path.isfile(self._vector_filename())
-        
+        _has_vector = os.path.isfile(self._vector_filename())        
         return _has_vector
     
+    def assign_label(self,label):
+        assert label==DataItem.REL_LABEL or label==DataItem.IREL_LABEL
+        if label==DataItem.REL_LABEL:
+            self.set_relevant()
+        else:
+            self.set_irrelevant()
+        
     def _vector_filename(self):
         return DataItem.vectors_path+self.id_+'_glove.p'
     
@@ -175,7 +197,8 @@ class DataItem(object):
                 concated_text += f'{text}'
             texts.append(concated_text)                
         return texts
-    
+    def __hash__(self):
+        return hash(f'{self.id_}-{self.source}')
     def get_y(item_list, type_=TYPE_BOW):
         assert all([item.label!=DataItem.UNK_LABEL for item in item_list])
         
@@ -220,6 +243,68 @@ class DataItem(object):
     def get_confidence(self):
         assert self.valid_confidence()
         return self.confidence
+    
+    
+
+class QueryDataItem(object):
+    vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/vocab_with_dp.txt'
+    word2index = dict([(linea.split(',')[1], int(linea.split(',')[0])) for linea in open(vocab_path, 'r').read().splitlines()])
+    nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
+    def __init__(self, str_):
+        self.text=str_
+        self.label=DataItem.UNK_LABEL
+        
+    def _dict(self):
+        return {'text': self.text, 'label':self.label}
+    def from_dict(dict_):
+        item = QueryDataItem(dict_['text'])        
+        item.label = dict_['label']
+        return item
+    
+    def _remove_punctuation(word):
+        return ''.join([char for char in word if not char in string.punctuation+' '])
+
+    def _tokenize(str_):
+        tokens = [word.lemma_.lower() for word in QueryDataItem.nlp(str_) if not word.is_stop and word.lemma_.isalnum()]
+        tokens = [word.replace('\n', '') for word in tokens if not word.isnumeric()\
+                  and len(QueryDataItem._remove_punctuation(word.replace('\n', '')))!=0]
+        return tokens
+    def vector(self, type_=DataItem.TYPE_BOW):
+        assert type_==DataItem.TYPE_BOW, 'not implemented for other types'
+        vector = np.zeros(shape=(QueryDataItem.get_vec_size(type_=type_),))
+        
+        for token in QueryDataItem._tokenize(self.text):
+            if token in QueryDataItem.word2index:
+                vector[QueryDataItem.word2index[token]]+=1
+        return normalize([vector,])[0,:]
+    
+    def has_vector(self):
+        return True
+    
+    def get_vec_size(type_=DataItem.TYPE_BOW):
+        assert type_== DataItem.TYPE_BOW, 'Not available for types differents than BoW'
+        if type_==DataItem.TYPE_BOW:
+            return 10000
+        
+    def is_relevant(self):
+        return self.label==DataItem.REL_LABEL
+    def is_irrelevant(self):
+        return self.label==DataItem.IREL_LABEL
+    def set_relevant(self):
+        self.label = DataItem.REL_LABEL
+    def set_irrelevant(self):
+        self.label = DataItem.IREL_LABEL 
+    def assign_label(self,label):
+        assert label==DataItem.REL_LABEL or label==DataItem.IREL_LABEL
+        if label==DataItem.REL_LABEL:
+            self.set_relevant()
+        else:
+            self.set_irrelevant()
+            
+    def get_htmldocview(self):
+        return  '<html><hr style=\"border-color:black\">'\
+                '<hr>'\
+                '{}<hr style=\"border-color:black\"></html>'.format(str(self.text))
 ##########################################################################################
 #                                         TESTER                                         #
 ##########################################################################################

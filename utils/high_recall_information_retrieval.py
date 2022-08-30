@@ -19,7 +19,7 @@ from utils.auxiliary import has_duplicated
 import shutil 
 from scipy import sparse
 from sklearn.preprocessing import normalize
-from utils.stopping_point import Quant_estimator
+from utils.stopping_point import Quant_estimator,QuantCI_estimator
 import threading
 
 class HRSystem(object):
@@ -129,8 +129,12 @@ class HRSystem(object):
             self.lock.release()
             
             self.ui.update_color_estimated_recall('red')
-            estimated = self.estimated_recall()*100
-            self.ui.update_recall_estimator(estimated)
+#             estimated = self.estimated_recall()*100
+            lower, estimated, upper = self.estimated_recall()
+            rel_count = self.get_relevant_count()
+            lower_rel_est_count = (rel_count-lower*rel_count)/lower
+            str_ = f'{lower*100:4.2f} % ~ {upper*100:4.2f} % (~{int(lower_rel_est_count):,})'
+            self.ui.update_recall_estimator(str_)
             
             self.lock.acquire()
             self.thread_count-=1
@@ -193,11 +197,15 @@ class HRSystem(object):
 #             X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[3], labeled_vecnames[ini:fin])),axis=1)
 #             yhats.append(linear_model.predict_proba(X)[:,1])
 #         return np.hstack(yhats)
+#     def estimated_recall(self):
+#         Rr = self._estimated_relevant_r()
+#         Ur = self._estimated_relevant_u()
+#         return Quant_estimator(Rr, Ur)
     def estimated_recall(self):
         Rr = self._estimated_relevant_r()
         Ur = self._estimated_relevant_u()
-        return Quant_estimator(Rr, Ur)
-
+        lower, upper = QuantCI_estimator(Rr, Ur)
+        return lower, Quant_estimator(Rr, Ur), upper
     
     def get_status(self):
         return self.status
@@ -664,7 +672,12 @@ class HRSystem(object):
                 
                 self.labeled_data = self.labeled_data[:-expansion]
                 logging.debug(f'Size of labeled data after removing expansion={len(self.labeled_data)}')
-                      
+    
+    def _extend_suggestions(self):
+        ## ADD 10k candidates extracted from global recall estimations, ONLY if there are not candidates already and only if estimations
+        ## available 
+        ## REMOVE THE 10k candidates from global recall estimations
+        pass
     def _compute_suggestions(self, full_search=True, one_iteration=False):
         cap = min(self.suggestion_sample_size, len(self.unlabeled_data))
                                      
@@ -676,13 +689,15 @@ class HRSystem(object):
         if len(self.candidate_args)!=0:
             # WORKING WITH PREVIOUS BATCH OF CANDIDATES
             logging.debug(f'There are candidate {len(self.candidate_args)} args remaining to be analyzed. Computing model predictions...')
+#             self._extend_suggestions()
             self.candidate_args, self.yhat = self._filter_and_sort_candidates(self.candidate_args)
             logging.debug(f'Suitable candidates after filtering {len(self.candidate_args)}.')
         if len(self.candidate_args)==0:
             logging.debug(f'There are no suitable candidates to be analyzed.')
             logging.debug(f'Using new random batch size {cap} and computing model predictions...')
             # IF NO NEW SUGGESTIONS IN PREVIOUS BATCH ( OR PEVIOUS BATCH EMPTY ALL TOGETHER), CREATING NEW BATCH
-            self.candidate_args = self.rangen.choice(range(len(self.unlabeled_data)), size=cap, replace=False )  
+            self.candidate_args = self.rangen.choice(range(len(self.unlabeled_data)), size=cap, replace=False )
+            self._extend_suggestions()
             self.candidate_args, self.yhat = self._filter_and_sort_candidates(self.candidate_args)
             logging.debug(f'Suitable candidates for new batch after filtering {len(self.candidate_args)}.')
 #         else:

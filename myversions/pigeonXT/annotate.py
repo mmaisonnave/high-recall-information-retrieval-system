@@ -41,6 +41,8 @@ def annotate(
     value_column='label',
     id_column='id',
     return_type='dataframe',
+    client_current_index=None,
+    finish_button_label=None,
 ):
     """
     Build an interactive widget for annotating a list or DataFrame of input examples.
@@ -173,7 +175,9 @@ def annotate(
     current_index = -1
     annotations_dict = {}
     
-
+    # ADDED MAISO August 11th, 2022
+    if finish_button_label is None:
+        finish_button_label='finish'
 
   
 
@@ -230,7 +234,7 @@ def annotate(
             else:
                 ## MODIFIED BY MAISO february 8th, 2022
                 for button in buttons:
-                    if button.description=='finish':
+                    if button.description==finish_button_label:
                         button.disabled=False
                 prev_example()
             return
@@ -426,7 +430,7 @@ def annotate(
     # END ADDED BY MAISO DATE: June 1st, 2022
     
     # MODFIED BY MAISO DATE: February 8th, 2022
-    btn = Button(description='finish', button_style='info')
+    btn = Button(description=finish_button_label, button_style='info')
     btn.on_click(finish)
     btn.disabled=True
     buttons.append(btn)
@@ -443,11 +447,18 @@ def annotate(
     out = Output()
     display(out)
 
-    ## ADDED BY MAISO April 20th, 22022
+    ## ADDED BY MAISO April 20th, 2022
     if re_annotating:
         current_index = len(annotations)-2
         annotations['changed']=True
         btn.disabled=False
+    #END ADDED BY MAISO
+    
+    
+    ## ADDED BY MAISO August 11th, 2022
+    if not client_current_index is None:
+        current_index=client_current_index-2
+        btn.disabled=True
     #END ADDED BY MAISO
     
     next_example()

@@ -2,6 +2,11 @@ from sklearn.linear_model import LogisticRegression
 import numpy as np
 import spacy
 from utils.data_item import DataItem
+from sklearn.preprocessing import normalize
+from scipy import sparse
+import pickle
+import joblib
+import json
 
 from sklearn.model_selection import cross_validate, StratifiedKFold
 import pandas as pd
@@ -18,7 +23,29 @@ class TermHighlighter(object):
         self.nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
 
         self.vocab=np.array(open(vocab_path, 'r').read().splitlines())
+    
+    def to_disk(self, filename):
+        configuration = {
+            'keep_top':self.keep_top,
+            'terms_per_article':self.terms_per_article,
+            'trained':self.trained,
+            }
+        with open(f'{filename}.json','w') as outputfile:
+            outputfile.write(json.dumps(configuration, indent=4))             
+        joblib.dump(self.model, f'{filename}.joblib')
         
+    def from_disk(filename):
+        with open(f'{filename}.json', 'r') as f:
+            configuration = json.load(f)
+            
+        term_highlighter = TermHighlighter()
+        term_highlighter.trained = configuration['trained']
+        term_highlighter.keep_top = configuration['keep_top']
+        term_highlighter.terms_per_article = configuration['terms_per_article']
+        
+        term_highlighter.model = joblib.load(f'{filename}.joblib')
+        return term_highlighter
+    
     def fit(self, item_list):
         assert all([item.label!=DataItem.UNK_LABEL for item in item_list])
         
@@ -43,7 +70,22 @@ class TermHighlighter(object):
         return f'<TermHighlighter model={self.model} trained={self.trained} vocab=<{self.vocab[0]}, ..., {self.vocab[1]}>>'
     
     
+    def _optimized_logreg_prediction(self, item_list, batch_size=80530):
+        linear_model = self.model
+        vecnames = [item._vector_filename() for item in item_list]
+
+        yhat = np.zeros(shape=(len(vecnames)))
+        yhats = []
+        for ini in range(0,len(vecnames), batch_size):
+            fin = min(ini+batch_size, len(vecnames))
+            X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[3], vecnames[ini:fin])),axis=1)
+            yhats.append(linear_model.predict_proba(X)[:,1])
+        return np.hstack(yhats)
+    
     def predict(self,item_list):
+        return self._optimized_logreg_prediction(item_list)
+    
+    def predict_old(self,item_list):
         assert self.trained
         max_mem_size_MB = 3072 # 3GB
 #         vec = DataItem.get_X(item_list[:1], type_=DataItem.TYPE_BOW)
@@ -72,7 +114,8 @@ class TermHighlighter(object):
     
     def highlight(self, text, data_item):
         term_score = [(term,coef) for term,coef in zip(self.vocab, self.highlight_coefficients(data_item) )]
-        term_score = sorted(term_score , key=lambda x:x[1],reverse=True)
+#         term_score = sorted(term_score , key=lambda x:x[1],reverse=True)
+
 #         term_score = term_score[:self.keep_top]
         term2coef = dict(term_score)
         
@@ -83,34 +126,40 @@ class TermHighlighter(object):
         
         tokens = tokens[np.argsort(scores)][::-1]
         index_pairs = []
-        coefs=[]
 #         visited=set()
-        idx=0
-        while idx<len(tokens):
-            index_pairs.append((tokens[idx].idx,tokens[idx].idx+len(tokens[idx].text),))
-            coefs.append(term2coef[tokens[idx].lemma_.lower()])
+        for idx in range(len(tokens)):
+            index_pairs.append((tokens[idx].idx,
+                                tokens[idx].idx+len(tokens[idx].text),
+                                term2coef[tokens[idx].lemma_.lower()],
+                               ))
+#             coefs.append()
+#         idx=0
+#         while idx<len(tokens):
 #             visited.add(tokens[idx].lemma_.lower())
-            idx+=1
+#             idx+=1
             
-        return TermHighlighter._highlight(text, index_pairs, coefs)
+        return TermHighlighter._highlight(text, index_pairs)
     
-    def _highlight(text, index_pairs, coefs):
+    def _highlight(text, index_pairs):
         if len(index_pairs)>0:
-            signs = np.array(coefs)>0
-            coefs = np.abs(coefs)
-            coefs = coefs/max(coefs)
+            max_ = np.max(np.abs([coef for _,_,coef in index_pairs ]))
+            if max_==0:
+                max_=1
+#             signs = np.array(coefs)>0
+#             coefs = np.abs(coefs)
+#             coefs = coefs/max(coefs)
             index_pairs = sorted(index_pairs, key=lambda x:x[0], reverse=True)
             pos=0
-            for ini,fin in index_pairs:
-                coef = coefs[pos]
-                sign = signs[pos]
+            for ini,fin,coef in index_pairs:
+#                 coef = coefs[pos]
+#                 sign = signs[pos]
     #             full_color = 255 - 255*coef
                 len_ = fin-ini
-                if sign:
-                    middle_color = 255 - 145*coef
+                if coef>0:
+                    middle_color = 255 - 145*(coef/max_)
                     text = text[:ini] +f'<mark style="background-color:rgb({255},{middle_color},{middle_color})">'+text[ini:fin]+'</mark>' +text[ini+len_:]
                 else:
-                    middle_color = 255 - 255*coef
+                    middle_color = 255 - 255*(coef/max_)
                     text = text[:ini] +f'<mark style="background-color:rgb({middle_color},{255},{middle_color})">'+text[ini:fin]+'</mark>' +text[ini+len_:]
                 pos+=1
         return text

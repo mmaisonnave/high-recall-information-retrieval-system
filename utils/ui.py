@@ -37,7 +37,7 @@ class UI(object):
 #                                               )
 
         self.session_name_text = widgets.Combobox(placeholder='Select a saved session or enter new session name',
-                                                  options=os.listdir('sessions'),
+                                                  options=[elem for elem in os.listdir('sessions') if not elem=='scal'],
                                                   description='Session name:',
                                                   ensure_option=False,
                                                   style={'description_width': 'initial'},
@@ -178,12 +178,12 @@ class UI(object):
         self.unlabeled_count_label = widgets.Label(value='')
         self.stopping_point_label = widgets.HTML(value='')
         
-        panel_layout = widgets.Layout(
+        panel_layout = widgets.Layout( 
                                         align_items='center',
                                         width='50%')
         boxes = [widgets.HBox([widgets.Label(value='Labeled size: '), self.labeled_count_label],layout=panel_layout),
                  widgets.HBox([widgets.Label(value='Unlabeled size: '), self.unlabeled_count_label],layout=panel_layout),
-                 widgets.HBox([self.stopping_point_label], layout=panel_layout)]
+                 widgets.HBox([widgets.Label(value='Est. recall:'), self.stopping_point_label], layout=panel_layout)]
 #                  widgets.HBox([widgets.Label(value='<computing stopping point>'), self.stopping_point_label], layout=panel_layout)]
         
         self.count_box = widgets.GridBox(boxes,
@@ -213,14 +213,14 @@ class UI(object):
         assert color=='red' or color=='green'
         current = BeautifulSoup(self.stopping_point_label.value, 'html.parser').get_text()
         if current=='':
-            current='Estimating recall...'
+            current='Estimating...'
         if color=='red':
             self.stopping_point_label.value='<mark style="background-color:rgb(255,110,110)">'+current+'</mark>'
         elif color=='green':
             self.stopping_point_label.value='<mark style="background-color:rgb(110,255,110)">'+current+'</mark>'
             
-    def update_recall_estimator(self, value):
-        self.stopping_point_label.value = f'Est. recall: {value:>5.2f} %'
+    def update_recall_estimator(self, str):
+        self.stopping_point_label.value = f'{str}'
         
     def disable_buttons(self):
         for  box in self.init_panel.children:
@@ -321,7 +321,7 @@ class UI(object):
 #         display(self.right_panel)
 #         display(self.bottom_panel)
         self.system.save()
-        self.session_name_text.options=os.listdir('sessions')
+        self.session_name_text.options=[elem for elem in os.listdir('sessions') if not elem=='scal']
         self.enable_buttons()
     def on_click_export(self, button=None):
         clear_output(wait=False)
