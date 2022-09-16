@@ -11,6 +11,16 @@ from utils.tokenizer import Tokenizer
 
 if __name__=='__main__':
     input_ =  ' '.join(sys.argv)
+
+    if re.search('--help', input_):
+        print('[USAGE]')
+        print(f'python {sys.argv[0]} --output-file=..precomputed/idf.txt '\
+                '--debug --unigram-file=../precomupted/uni_gram_freq.txt '\
+                '--ngram-file=../precomputed/ngram_freq.txt '\
+                '--vocab-file=../precomputed/vocab.txt '\
+                '--rancom-sample=5000000')
+        print()
+        sys.exit(0)
     
     # INPUT #1
     output_file = re.findall('--output-file=([^\ ]*)', input_)
@@ -26,6 +36,8 @@ if __name__=='__main__':
         print('Please provide data sources (/home/ec2-user/SageMaker/data/GM_all_1945_1956/)')
         sys.exit(1)
         
+    files = [data_source+file for data_source in data_sources for file in os.listdir(data_source)]
+    
     # INPUT #3 
     debug = False
     debug = len(re.findall('--debug', input_))>0
@@ -51,6 +63,17 @@ if __name__=='__main__':
         sys.exit(1)
     vocab_file = vocab_file[0]
     
+    
+    # INPUT #7: random sample
+    random_sample = re.findall('--random-sample=([^\ ]*)', input_)
+    if len(random_sample)>0:
+        print('[WARNING] Using random sample only.')
+        random_sample = int(random_sample[0])  
+        ran = np.random.default_rng(2020)
+        files = ran.choice(files, size=random_sample,replace=False)
+        
+        
+    
     tokenizer = Tokenizer()
 
     freq = [(line.split(';')[0], int(line.split(';')[1])) for line in open(unigram_file).read().splitlines()]
@@ -64,7 +87,7 @@ if __name__=='__main__':
     with open(vocab_file, 'w') as f:
         f.write('\n'.join(vocab))
         
-    files = [data_source+file for data_source in data_sources for file in os.listdir(data_source)]
+
     if debug:
         print('[WARNING] debug activated.')
         files = files[:1]

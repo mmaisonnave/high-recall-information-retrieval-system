@@ -1,10 +1,13 @@
 TARGET_RECALL=0.8
-for N in 50 100 250 500 1000 2000 3000 4500 6000
+for PROPORTION in 0\.0 0\.25 0\.50 0\.75 1\.0
 do
-    for I in {1..40}
+    for N in 50 100 250 500 1000 2000 3000 4500 6000
     do
-        RANDOM_NUMBER=$RANDOM
-        echo python scal_simulation.py --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER
-        python scal_simulation.py --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER
+        for I in {1..50}
+        do
+            RANDOM_NUMBER=$RANDOM
+            echo python scal_simulation.py --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER --proportion-relevance=$PROPORTION
+            python scal_simulation.py --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER --proportion-relevance=$PROPORTION
+        done
     done
 done

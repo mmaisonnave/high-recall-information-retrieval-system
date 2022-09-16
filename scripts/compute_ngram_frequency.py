@@ -18,11 +18,19 @@ import numpy as np
 #     return _bigrams(list_)+_trigrams(list_)
 
 if __name__=='__main__':
+    input_ = ' '.join(sys.argv)
+    if re.search('--help',input_):
+        print('[USAGE]')
+        print(f'python {sys.argv[0]} --output-file=../precomputed/ngram_freq.txt '\
+                '--unigram-file=../precomputed/uni_gram_freq.txt '\
+                '--random-sample=500000 '\
+                '/home/ec2-user/SageMaker/data/GM_all_1945_1956/')
+        print()
+        sys.exit(0)
     print(f'[  OK   ] Computing freq of n-grams, starting...')
     tokenizer = Tokenizer()
     
     # INPUT #1: output_folder
-    input_ = ' '.join(sys.argv)
     output_folder = re.findall('--output-file=([^\ ]*)', input_)
     if len(output_folder)==0:
         print('Please indicate output file (python script.py --output-file=../precomputed/ngram_freq.txt')

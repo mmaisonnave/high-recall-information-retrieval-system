@@ -1,6 +1,6 @@
 import numpy as np
 from utils.term_highlighter import TermHighlighter
-from utils.data_item import DataItem,QueryDataItem
+from utils.data_item import DataItem, QueryDataItem
 import threading
 import myversions.pigeonXT as pixt
 from utils.io import html
@@ -13,6 +13,7 @@ from utils.oracle import Oracle
 import json
 import os
 import logging
+from sklearn.metrics import pairwise_distances
 
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, confusion_matrix
 
@@ -28,6 +29,9 @@ class SCAL(object):
                  target_recall=0.8,
                  simulation=False,
                  empty=False,
+                 proportion_relevance_feedback=1.0,
+                 diversity=False,
+                 average_diversity=False,
                  seed=2022
                 ):
         
@@ -42,12 +46,17 @@ class SCAL(object):
                                 datefmt='%Y-%m-%d %H:%M:%S',
     #                             force=True,                      # INVALID WHEN CHANGE ENV (IMM -> BERT)
                                 level=logging.DEBUG)
-            logging.debug(f'STARTING SCAL - Size of initial labeled={len(labeled_collection)} - '\
+            logging.debug('-'*30+'STARTING SCAL'+'-'*30)
+            logging.debug(f'Size of initial labeled={len(labeled_collection)} - '\
                           f'Size of full unlabeled collection={len(unlabeled_collection)} - '\
-                          f'Size of Random Sample={random_sample_size} - '\
-                          f'Batch size cap={batch_size_cap} - '\
+                          f'Size of Random Sample(N)={random_sample_size} - '\
+                          f'Batch size cap(b)={batch_size_cap} - '\
                           f'Target recall={target_recall} - Simualation={simulation} - Session Name={session_name}')
             self.simulation=simulation
+            self.diversity=diversity
+            self.average_diversity=average_diversity
+            self.proportion_relevance_feedback = proportion_relevance_feedback
+            self.using_relevance_feedback=True
             self.session_name=session_name
             self.target_recall=target_recall
             self.random_sample_size=random_sample_size
@@ -58,10 +67,10 @@ class SCAL(object):
             self.random_unlabeled_collection = self.ran.choice(unlabeled_collection, 
                                                           size=min(self.random_sample_size,len(unlabeled_collection)), 
                                                           replace=False)
-            self.U0 = self.random_unlabeled_collection
+            self.full_U = self.random_unlabeled_collection
             self.cant_iterations = SCAL._cant_iterations(len(self.random_unlabeled_collection))
-            self.Rhat=np.zeros(shape=(self.cant_iterations+1,))
-            self.it=1
+            self.Rhat=np.zeros(shape=(self.cant_iterations,))
+            self.j=-1
             self.labeled_collection = labeled_collection
             self.unlabeled_collection = unlabeled_collection
             self.removed = []
@@ -70,20 +79,25 @@ class SCAL(object):
             assert all([item.is_relevant() or item.is_irrelevant() for item in labeled_collection])
             self.all_texts = [item.get_htmldocview() for item in labeled_collection]
             self.all_labels = [SCAL.RELEVANT_LABEL if item.is_relevant() else SCAL.IRRELEVANT_LABEL for item in labeled_collection]
-        
+
     def to_disk(self):
         configuration = {'session-name':self.session_name,
                          'target-recall':self.target_recall,
+                         'proportion-relevance-feedback':self.proportion_relevance_feedback,
+                         'using-relevance-feedback':self.using_relevance_feedback,
                          'seed':self.seed,
+                         'diversity':self.diversity,
+                         'average-diversity':self.average_diversity,
                          'simulation':self.simulation,
                          'random-sample-size':self.random_sample_size,
                          'B': self.B,
                          'n': self.n,
+                         'b': self.b,
                          'random-unlabeled-collection': [item._dict() for item in self.random_unlabeled_collection],
-                         'U0': [item._dict() for item in self.U0], 
+                         'U0': [item._dict() for item in self.full_U], 
                          'cant-iterations': self.cant_iterations,
                          'Rhat': list(self.Rhat),
-                         'it': self.it,
+                         'j': self.j,
                          'labeled-collection': [item._dict() for item in self.labeled_collection],
                          'unlabeled-collection': [item._dict() for item in self.unlabeled_collection],
                          'removed': [[elem._dict() for elem in list_] for list_ in self.removed],
@@ -114,16 +128,21 @@ class SCAL(object):
         scal.session_name=configuration['session-name'] #session_name
         scal.simulation=configuration['simulation'] #session_name
         scal.target_recall=configuration['target-recall']
+        scal.proportion_relevance_feedback = configuration['proportion-relevance-feedback']
+        scal.using_relevance_feedback = configuration['using-relevance-feedback']        
         scal.random_sample_size= configuration['random-sample-size']
-        self.seed=configuration['seed']
-        scal.ran =  np.random.default_rng(self.seed)
+        scal.seed=configuration['seed']
+        scal.ran =  np.random.default_rng(scal.seed)
         scal.B = configuration['B']
         scal.n = configuration['n']
+        scal.b = configuration['b']
+        scal.diversity = configuration['diversity']
+        scal.average_diversity = configuration['average-diversity']
         scal.random_unlabeled_collection = [DataItem.from_dict(dict_) for dict_ in configuration['random-unlabeled-collection']] 
         scal.U0 = [DataItem.from_dict(dict_) for dict_ in configuration['U0']] 
         scal.cant_iterations =  configuration['cant-iterations']
         scal.Rhat= np.array(configuration['Rhat']) #np.zeros(shape=(self.cant_iterations+1,))
-        scal.it=configuration['it']            
+        scal.j=configuration['j']            
         scal.labeled_collection = [DataItem.from_dict(dict_) if 'id' in dict_ else QueryDataItem.from_dict(dict_)  
                                    for dict_ in configuration['labeled-collection']] 
         
@@ -148,25 +167,101 @@ class SCAL(object):
 
         return scal
         # use from_dict in DataItem and change Rhat to numpy
+    
+#     def _log_status(self):
+#         current_b='N/A'
+#         current_rhat='N/A'
+#         current_precision='N/A'
+#         current_Uj_size='  N/A '
+#         current_j=f'  -1'
+#         if self.j>=0 and self.j<self.cant_iterations:
+#             current_b=f'{self.b:3}'
+#             current_rhat=f'{self.Rhat[self.j]}'
+#             current_precision=f'{self.precision_estimates[-1]:4.3f}'
+#             current_j=f'{self.j:>4}'
+#             current_Uj_size=f'{self.size_of_Uj:6}'
+#         logging.debug(f'j={current_j}/{self.cant_iterations:4} - B={self.B:<5,} - b={current_b} - Rhat={current_rhat} -'\
+#               f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
+#               f' - cant_rel={self._relevant_count()} - precision={current_precision} - Uj_size={current_Uj_size}'
+#              ) 
+#         print(f'j={current_j}/{self.cant_iterations:4} - B={self.B:<5,} - b={current_b} - Rhat={current_rhat} -'\
+#               f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
+#               f' - cant_rel={self._relevant_count()} - precision={current_precision} - Uj_size={current_Uj_size}'
+#              ) 
     def resume(self):
         pass
     def run(self):
+        self.j=0
         self.loop()
-    def _extend_with_random_documents(self):        
+    def _extend_with_random_documents(self):    
+        assert all([item.is_unknown() for item in self.random_unlabeled_collection])
         extension = self.ran.choice(self.random_unlabeled_collection, size=min(100,len(self.random_unlabeled_collection)), replace=False)
-        list(map(lambda x: x.set_irrelevant(), self.random_unlabeled_collection))
+        list(map(lambda x: x.set_irrelevant(), extension))
+        assert all([item.is_irrelevant() for item in extension])
         return extension
     
-    def _label_as_unkown(collection):
+    def _label_as_unknown(collection):
         list(map(lambda x: x.set_unknown(), collection))
         
     def _build_classifier(training_collection):
         model = TermHighlighter()
         model.fit(training_collection)
         return model
+    
+    def _smallest_distance_to_labeled_collection(self ):
+        item_list = self.random_unlabeled_collection
+        m1 = DataItem.get_X(item_list)
+        m2 = DataItem.get_X(self.labeled_collection)
+        distances = pairwise_distances(m1,m2)
+        if self.average_diversity:
+            mindist = np.average(distances,axis=1)
+        else:
+            mindist = np.min(distances,axis=1)
+            
+        if np.max(mindist)!=0:
+            mindist=mindist/np.max(mindist)
+        assert mindist.shape==(len(self.random_unlabeled_collection),)
+        return mindist
+    
+        
     def _select_highest_scoring_docs(self):
+        current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
         yhat = self.models[-1].predict(self.random_unlabeled_collection)
-        args = np.argsort(yhat)[::-1]
+        if current_proportion<=self.proportion_relevance_feedback:
+#             logging.debug(f'{current_proportion} <= {self.proportion_relevance_feedback}? TRUE')
+            # RELEVANCE SAMPLING
+            if self.diversity:
+                # WITH DIVERSITY
+                mindist = self._smallest_distance_to_labeled_collection()
+                haverage = 2*((mindist*yhat)/(mindist+yhat))
+                assert mindist.shape==yhat.shape, f'{mindist.shape}!={yhat.shape}'
+                args = np.argsort(haverage)[::-1]
+            else:
+                # WITHOUT DIVERSITY
+                args = np.argsort(yhat)[::-1]
+#             highest_scoring_docs = [self.random_unlabeled_collection[arg] for arg in args[:self.B]]
+            
+#             return 
+        else:
+#             logging.debug(f'{current_proportion} <= {self.proportion_relevance_feedback}? FALSE')
+            if self.using_relevance_feedback:
+                logging.debug('Change from relevance sampling to uncertainty sampling')
+                self.using_relevance_feedback=False
+            # UNCERTAINTY SAMPLING
+            if self.diversity:
+                # WITH DIVERSITY
+                mindist = self._smallest_distance_to_labeled_collection()
+                assert mindist.shape==yhat.shape, f'{mindist.shape}!={yhat.shape}'
+                auxiliar = 1/(1+np.abs(yhat-0.5))
+                if np.max(auxiliar)!=0:
+                    auxiliar=auxiliar/np.max(auxiliar)
+                haverage = 2*((mindist*auxiliar)/(mindist+auxiliar))
+                
+                args = np.argsort(haverage)[::-1]
+            else:
+                # WITHOUT DIVERSITY
+                args = np.argsort(np.abs(yhat-0.5))
+            
         return [self.random_unlabeled_collection[arg] for arg in args[:self.B]]
         
     def _remove_from_unlabeled(self,to_remove):
@@ -174,23 +269,29 @@ class SCAL(object):
         return list(filter(lambda x: not x in to_remove, self.random_unlabeled_collection))
 
     
-             
-    def _total_effort(self):    
-        B=1
-        it=1
-        effort=0
-        len_unlabeled=self._unlabeled_in_sample()
-        while (B<len_unlabeled):        
-            b = B if B<=self.n else self.n
-            effort+=b
-            len_unlabeled = len_unlabeled - B
-            B+=int(np.ceil(B/10))
-            it+=1
-        return effort   
+    def _get_Uj(self,j):
+        to_remove = set([elem for list_ in self.removed[:(j+1)]  for elem in list_])
+        Uj = [elem for elem in self.full_U if not elem in to_remove]
+        return Uj
+    def _total_effort(self):  
+        if not hasattr(self, 'labeling_budget'):
+            B=1
+            it=1
+            effort=0
+            len_unlabeled=self._unlabeled_in_sample()
+            while (len_unlabeled>0):        
+                b = B if B<=self.n else self.n
+                effort+=min(b,len_unlabeled)
+                len_unlabeled = len_unlabeled - B
+                B+=int(np.ceil(B/10))
+                it+=1
+            self.labeling_budget = effort
+        
+        return self.labeling_budget   
     def _cant_iterations(len_unlabeled):    
         B=1
-        it=1
-        while (B<len_unlabeled):        
+        it=0
+        while len_unlabeled>0:        
             len_unlabeled = len_unlabeled - B
             B+=int(np.ceil(B/10))
             it+=1
@@ -227,21 +328,18 @@ class SCAL(object):
             # ~
         
         
-        self.b = self.B if (self.Rhat[self.it-1]==1 or self.B<=self.n) else self.n
+        self.b = self.B if (self.Rhat[self.j]==1 or self.B<=self.n) else self.n
         assert self.b<=self.B
         precision = f'{self.precision_estimates[-1]:4.3f}' if len(self.precision_estimates)>0 else 'N/A'
         
-        logging.debug(f'it={self.it:>4}/{self.cant_iterations:4} - B={self.B:<5,} - b={self.b:2} - Rhat={self.Rhat[self.it-1]:8.3f} -'\
-              f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
-              f' - cant_rel={self._relevant_count()} - precision={precision}'
-             ) 
         
+
         extension = self._extend_with_random_documents()
         
 
         
         self.models.append(SCAL._build_classifier(list(extension)+list(self.labeled_collection)))
-        SCAL._label_as_unkown(extension)
+        SCAL._label_as_unknown(extension)
         self.sorted_docs = self._select_highest_scoring_docs()
 
         self.random_sample_from_batch = self.ran.choice(self.sorted_docs, size=self.b, replace=False)
@@ -291,18 +389,23 @@ class SCAL(object):
             
         self.random_unlabeled_collection = self._remove_from_unlabeled(self.sorted_docs)    
         self.removed.append([elem for elem in self.sorted_docs ])
-
-
+        
+        self.size_of_Uj = len([elem for elem in self.full_U if not elem in set([elem for list_ in self.removed for elem in list_])])
         r = len([item for item in self.random_sample_from_batch if item.is_relevant()])
         self.precision_estimates.append(r/self.b)
-        self.Rhat[self.it] = (r*self.B)/self.b
-        if self.it>1:
-            self.Rhat[self.it] += self.Rhat[self.it-1]
-
+        self.Rhat[self.j] = (r*self.B)/self.b
+        assert (r*self.B)/self.b>=r
+        if self.j-1>=0:
+            self.Rhat[self.j] += self.Rhat[self.j-1]
+        
         self.B += int(np.ceil(self.B/10))
         self.B = min(self.B, len(self.random_unlabeled_collection))
 
-        self.it+=1
+        logging.debug(f'it={self.j+1:>4}/{self.cant_iterations:4} - B={self.B:<5,} - b={self.b:3} - Rhat={self.Rhat[self.j]} -'\
+              f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
+              f' - cant_rel={self._relevant_count()} - precision={self.precision_estimates[-1]:4.3f} - Uj_size={self.size_of_Uj:6}'
+             ) 
+        self.j+=1
         self.to_disk()
 
         
@@ -315,73 +418,119 @@ class SCAL(object):
 
 
     def finish(self):
-        logging.debug(f'it=  end    - B={self.B:<5,} - b={self.b:2} - Rhat={self.Rhat[self.it-1]:8.3f} -'\
-              f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
-              f' - cant_rel={self._relevant_count()} - precision={self.precision_estimates[-1]:4.3f}'
-             )
 
-        self.prevalecence = (1.05*self.Rhat[self.it-1]) / self.random_sample_size
+#         logging.debug(f'it=  end    - B={self.B:<5,} - b={self.b:2} - Rhat={self.Rhat[self.j-1]:8.3f} -'\
+#               f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
+#               f' - cant_rel={self._relevant_count()} - precision={self.precision_estimates[-1]:4.3f}'
+#              )
+#         print(f'Rhat={self.Rhat}')
+        self.prevalecence = (1.05*self.Rhat[self.j-1]) / self.random_sample_size
 #         print(f'Prevalecense: {self.prevalecence}')
         
         no_of_expected_relevant = self.target_recall * self.prevalecence * self.random_sample_size
-
+#         print(f'no_of_expected_relevant={no_of_expected_relevant}')
         j=0
         while j<len(self.Rhat) and self.Rhat[j]<no_of_expected_relevant:
+#             print(f'{self.Rhat[j]} (Rhat) <{no_of_expected_relevant} (no_exp_rel)? {self.Rhat[j]<no_of_expected_relevant}')
             j+=1
             
 
             
 #         print(f'j value: {j} (it={j+1})')
-        Uj = self.U0
-
-        to_remove = set([elem for list_ in self.removed[:j]  for elem in list_])
+#         Uj = full_U
+#         to_remove = set([elem for list_ in self.removed[:j]  for elem in list_])
 #         print(f'size of removed: {len(self.removed)}')
 #         print(f'size of to_remove: {len(to_remove)}')
-        Uj = [elem for elem in Uj if not elem in to_remove]
-#         print(f'Size of Uj: {len(Uj)}')
+#         Uj = [elem for elem in Uj if not elem in to_remove]
         
-        t = np.max(self.models[j].predict(Uj))
+
+        
+        #t = np.max(self.models[j].predict(Uj)) ANTERIOR QUE POR ALGUNA RAZON ANDABA BIEN
+#         t = np.max(self.models[j].predict([elem for elem in self.full_U if not elem in Uj])) # (U_0) \ (U_j) (set difference)
+        
+        Uj = self._get_Uj(j)
+#         print(f'Size of U0: {len(self._get_Uj(0))}')
+#         print(f'Size of Uj: {len(Uj)}')       
+        
+        # By the j-th iteration all the relevant articles (plus some irrelevants) have been found  which means:
+        #
+        # Rhat_{j} > expected_no_of_rel_articles_in_sample
+        # 
+        # Here expected_no_of_rel_articles_in_sample =0.8*prevalence*N   (0.8 is target_recall) (and N is sample size)
+        # Because by j-th iteration every relevant article was found, we have in Uj mostly irrelevants. So,
+        # we need a threshold that mark as relevant at least what we have procesed so far (U_inicial \ Uj) (everything except Uj).
+        # to do that, we have to options. Define the threshold t as:
+        #     1. t = np.max(self.models[j].predict(Uj)        # This would give a threshold that leaves all elements in Uj as irrelevanats
+        #     2. t = np.min(self.models[j].predict(U_ini\Uj)  # This would give the minimum threshold to leave all 
+        #                                                                               elements procesed so far as relevant
+        #
+        # (U_ini\Uj is computed as [elem for elem in self.full_U if not elem in Uj])
+        #
+        # Both thresholds give almost the same number (one considers the element right before the relevants start and the other the one 
+        # right after), which means that the classifier should be implemented as:
+        #
+        # relevant if self.models[-1].predict(...) >  t     (for first  threshold)
+        # relevant if self.models[-1].predict(...) >= t     (for second threshold)
+        #         
+        
+        t = np.min(self.models[j].predict([elem for elem in self.full_U if not elem in Uj]))
+        
+#         print('DEBUG >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+#         print(f'max(Sj(Uj))        ={np.max(self.models[j].predict(self._get_Uj(j))):4.3f} (mejor)')
+#         print(f'max(Sj(U0))        ={np.max(self.models[j].predict(self._get_Uj(0))):4.3f}')
+#         print(f'max(Sj(U-1 \\ Uj ))={np.max(self.models[j].predict([elem for elem in self.full_U if not elem in Uj])):4.3f} (propuesta - pero anda mal)')
+#         print(f'min(Sj(U-1 \\ Uj ))={np.min(self.models[j].predict([elem for elem in self.full_U if not elem in Uj])):4.3f} (muy parecido al mejor)')
+#         print('DEBUG >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+        
+#         logging.debug(f'threshold={t} - '\
+#                       f'size of U0={len(self._get_Uj(0))} - '\
+#                       f'size of Uj={len(Uj)} - '\
+#                       f'size of Uo\\Uj={len([elem for elem in self.full_U if not elem in Uj])}')
 #         print(f'threshold={t}')
         self.models.append(SCAL._build_classifier(self.labeled_collection))
-        
-        print(f'Size of unlabeled={len(self.unlabeled_collection)}')
-        print(f'Size of labeled={len(self.labeled_collection)}')
+#         print(f'Rhat={self.Rhat}')
+#         print(f'Size of unlabeled={len(self.unlabeled_collection)}')
+#         print(f'Size of labeled={len(self.labeled_collection)}')
         final_unlabeled_collection = [item for item in self.unlabeled_collection if not item in self.labeled_collection[1:]]
-        print(f'Size of unlabeled after removing labeled={len(final_unlabeled_collection)}')
+#         print(f'Size of unlabeled after removing labeled={len(final_unlabeled_collection)}')
         
+#         print(f'proportion={self.proportion_relevance_feedback}')
         yhat = self.models[-1].predict(final_unlabeled_collection)
         relevant = yhat>=t
-        print(f'Shape of yhat={yhat.shape}')
-        print(f'Number of relevant={np.sum(yhat>=t)}')
+#         print(f'Shape of yhat={yhat.shape}')
+#         print(f'Number of relevant={np.sum(yhat>=t)}')
         
-        logging.debug(f'SCAL RESULTS: Est. prevalecence={self.prevalecence:4.3f} - '\
-                      f'Size of labeled={len(self.labeled_collection)} - '\
-                      f'Size of total unlabeled={len(final_unlabeled_collection)} - '\
-                      f'Est. relevant in sample={no_of_expected_relevant:4.3f} - '\
-                      f'It used for determine threshold={j+1} (j={j}) - Threshold={t:4.3f} - '\
-                      f'Relevant found (total): {len([item for item in self.labeled_collection if item.is_relevant()])+np.sum(relevant)}'\
-                      f'({len([item for item in self.labeled_collection if item.is_relevant()])} labeled / {np.sum(relevant)} suggested)'
-                     )
+        
+        logging.debug('-'*30+'FINISHING SCAL'+'-'*30)
+        logging.debug(f'Final   labeled size   ={len(self.labeled_collection)}')
+        logging.debug(f'Final unlabeled size   ={len(final_unlabeled_collection)}')
+        logging.debug(f'Est. prevalecence      ={(self.prevalecence):4.3f}')
+        logging.debug(f'Exp. relevant in sample={no_of_expected_relevant:4.3f}')
+        logging.debug(f'j                      ={j}')
+        logging.debug(f'Threshold              ={t}')
+        logging.debug(f'Relevant found (total) ={len([item for item in self.labeled_collection if item.is_relevant()])+np.sum(relevant)}'\
+                      f'({len([item for item in self.labeled_collection if item.is_relevant()])} labeled / {np.sum(relevant)} suggested)')
+
 #         print(f'Relevant count: {np.sum(relevant)}')
 #         print(f'Precision estimate: {np.average(self.precision_estimates)}')
         
-        labeled_data = [item for item in self.labeled_collection[1:] if item.is_relevant()]
-        confidence = [1.0]*len(labeled_data)
+        relevant_data = [item for item in self.labeled_collection[1:] if item.is_relevant()]
+        confidence = [1.0]*len(relevant_data)
         
-        no_of_labeled_rel = len(labeled_data)
+        no_of_labeled_rel = len(relevant_data)
         
-        labeled_data += [item for item,y in zip(final_unlabeled_collection,yhat) if y>=t]
+        relevant_data += [item for item,y in zip(final_unlabeled_collection,yhat) if y>=t]
         confidence +=list([y for item,y in zip(final_unlabeled_collection,yhat) if y>=t])
         
-        assert len(labeled_data)==len(confidence)
+        assert len(relevant_data)==len(confidence)
         
-        print(f'len(labeled_data)={len(labeled_data)}')
-        print(f'len(labeled_data)={len(confidence)}')
+#         print(f'len(relevant_data)={len(relevant_data)}')
+#         print(f'len(confidence)   ={len(confidence)}')
         filename = f'sessions/scal/{self.session_name}/data/exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
         with open(filename, 'w') as writer:
             writer.write('URL,relevant_or_suggested,confidence\n')
             count=0
-            for item,confidence_value in zip(labeled_data,confidence):
+            for item,confidence_value in zip(relevant_data,confidence):
                 if count<no_of_labeled_rel:
                     writer.write(f'https://proquest.com/docview/{item.id_},rel,{confidence_value:4.3f}\n')  
                 else:
@@ -407,11 +556,13 @@ class SCAL(object):
             tn, fp, fn, tp = confusion_matrix(ytrue, yhat>=t).ravel()
             logging.debug(f'SIMULATION RESULTS: accuracy={acc:4.3f} - precision={prec:4.3f} - recall={rec:4.3f} - F1-score={f1:4.3f} - '\
                           f'TN={tn} - FP={fp} - FN={fn} - TP={tp} ')
+#             print(f'SIMULATION RESULTS: accuracy={acc:4.3f} - precision={prec:4.3f} - recall={rec:4.3f} - F1-score={f1:4.3f} - '\
+#                           f'TN={tn} - FP={fp} - FN={fn} - TP={tp} ')
 #             print(f'Accuracy:  {acc:4.3f}')
 #             print(f'Precision: {prec:4.3f}')
 #             print(f'Recall:    {rec:4.3f}')
 #             print(f'F1-score   {f1:4.3f}')
         print('FINISH simulation')
-        return labeled_data, confidence
+        return relevant_data, confidence
 #         return _get_relevant(model, prevalecence, unlabeled_collection)
         

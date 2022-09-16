@@ -142,16 +142,16 @@ class DataItem(object):
 
             data = pickle.load(open(self._vector_filename(), 'rb'))
             if type_==DataItem.TYPE_BOW:
-                x = data[3].toarray()[0,:]
+                x = data[1].toarray()[0,:]
             elif type_==DataItem.TYPE_GLOVE300:
                 x = data[0]
                 assert x.shape==(300,)
             elif type_==DataItem.TYPE_HGGFC:
                 x = get_texts([self])
-            else:
-                assert type_==DataItem.TYPE_GLOVE600
-                x = data[1]
-                assert x.shape==(600,)
+#             else:
+#                 assert type_==DataItem.TYPE_GLOVE600
+#                 x = data[1]
+#                 assert x.shape==(600,)
                
             
             x = normalize([x])[0,:]
@@ -221,6 +221,8 @@ class DataItem(object):
         return self.label==DataItem.REL_LABEL
     def is_irrelevant(self):
         return self.label==DataItem.IREL_LABEL
+    def is_unknown(self):
+        return self.label==DataItem.UNK_LABEL
     def set_relevant(self):
         self.label = DataItem.REL_LABEL
     def set_irrelevant(self):
@@ -247,8 +249,10 @@ class DataItem(object):
     
 
 class QueryDataItem(object):
-    vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/vocab_with_dp.txt'
-    word2index = dict([(linea.split(',')[1], int(linea.split(',')[0])) for linea in open(vocab_path, 'r').read().splitlines()])
+#     vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/vocab_with_dp.txt'
+    vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/precomputed/vocab.txt'
+    vocab =  open(vocab_path, 'r').read().splitlines()
+    word2index = dict([(word,idx) for idx,word in enumerate(vocab)]) # dict([(linea.split(',')[1], int(linea.split(',')[0])) for linea in])
     nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
     def __init__(self, str_):
         self.text=str_

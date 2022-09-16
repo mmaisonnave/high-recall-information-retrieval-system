@@ -30,3 +30,11 @@ def request_user_input(user_callback):
     b.description='Submit'
     b.on_click(callback)
     display(box)
+
+def ask_confirmation():
+    response = input('Are you sure (y/n)? ')
+    while response!='n' and response!='y':
+        response = input('Invalid response, please try again. Are you sure (y/n)? ')
+    assert response=='y' or response=='n'
+    return response=='y'
+        

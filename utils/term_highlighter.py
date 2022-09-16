@@ -12,8 +12,10 @@ from sklearn.model_selection import cross_validate, StratifiedKFold
 import pandas as pd
 from sklearn.base import clone
 
+from utils.tokenizer import Tokenizer
+
 class TermHighlighter(object):
-    def __init__(self, terms_per_article=10, keep_top=20, vocab_path='/home/ec2-user/SageMaker/mariano/notebooks/04. Model of DP/precomputed/vocab_with_dp.txt'):
+    def __init__(self, terms_per_article=10, keep_top=20, vocab_path='/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/precomputed/vocab.txt'):
         self.keep_top = keep_top
         self.terms_per_article=terms_per_article
         
@@ -23,6 +25,7 @@ class TermHighlighter(object):
         self.nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
 
         self.vocab=np.array(open(vocab_path, 'r').read().splitlines())
+        self.tokenizer = Tokenizer()
     
     def to_disk(self, filename):
         configuration = {
@@ -78,7 +81,7 @@ class TermHighlighter(object):
         yhats = []
         for ini in range(0,len(vecnames), batch_size):
             fin = min(ini+batch_size, len(vecnames))
-            X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[3], vecnames[ini:fin])),axis=1)
+            X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))[1], vecnames[ini:fin])),axis=1)
             yhats.append(linear_model.predict_proba(X)[:,1])
         return np.hstack(yhats)
     
@@ -120,18 +123,27 @@ class TermHighlighter(object):
         term2coef = dict(term_score)
         
         
-        doc = self.nlp(text)
-        tokens = np.array([token for token in doc if token.lemma_.lower() in term2coef])
-        scores = np.array([term2coef[token.lemma_.lower()] for token in tokens])
+#         doc = self.nlp(text)
+#         tokens = np.array([token for token in doc if token.lemma_.lower() in term2coef])
+
+        tokens, indices = self.tokenizer.ngrams_and_indexes(text) # This includes uni-, bi-, and trigrams
+        tokens = np.array([token for token in tokens if token in term2coef])
+        indices = np.array([index for token,index in zip(tokens,indices) if token in term2coef])
+        if len(tokens)>0:
+            scores = np.array([term2coef[token] for token in tokens if token in term2coef])
+
+            tokens = tokens[np.argsort(scores)][::-1]
+            indices = indices[np.argsort(scores)][::-1]
         
-        tokens = tokens[np.argsort(scores)][::-1]
+        
         index_pairs = []
 #         visited=set()
         for idx in range(len(tokens)):
-            index_pairs.append((tokens[idx].idx,
-                                tokens[idx].idx+len(tokens[idx].text),
-                                term2coef[tokens[idx].lemma_.lower()],
-                               ))
+            index_pairs.append((indices[idx][0],indices[idx][1], term2coef[tokens[idx]]))
+#             index_pairs.append((tokens[idx].idx,
+#                                 tokens[idx].idx+len(tokens[idx].text),
+#                                 term2coef[tokens[idx].lemma_.lower()],
+#                                ))
 #             coefs.append()
 #         idx=0
 #         while idx<len(tokens):
@@ -197,7 +209,7 @@ def test_term_highlighter():
         if item.has_vector():
             labeled_data.append(item)
 
-    keep_top=20
+    keep_top=100
     terms_per_article=10
     highlighter = TermHighlighter(keep_top=keep_top,terms_per_article=terms_per_article)
     assert not highlighter.trained
