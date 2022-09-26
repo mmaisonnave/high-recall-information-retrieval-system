@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 import html
 from sklearn.preprocessing import normalize
-from scipy.sparse import csr_matrix
+from scipy.sparse import lil_matrix
 import spacy
 import string
 
@@ -13,7 +13,6 @@ import string
 
     
 class DataItem(object):
-    vectors_path = '/home/ec2-user/SageMaker/mariano/notebooks/04. Model of DP/precomputed/'
     UNK_LABEL = 'U'
     REL_LABEL = 'R'
     IREL_LABEL = 'I'   
@@ -23,32 +22,53 @@ class DataItem(object):
     TYPE_BOW = 'B'
     TYPE_HGGFC = 'HF'
     
-    GM1 = '/home/ec2-user/SageMaker/data/GM_all_1945_1956/'
-    GM2 = '/home/ec2-user/SageMaker/data/GM_all_1957-1967/'
+    sources = ['/home/ec2-user/SageMaker/data/'+source for source in os.listdir('/home/ec2-user/SageMaker/data/')]
     
-    GM1_SET = set([f[:-4] for f in os.listdir(GM1)])
+#     GM1 = '/home/ec2-user/SageMaker/data/GM_all_1945_1956/'
+#     GM2 = '/home/ec2-user/SageMaker/data/GM_all_1957-1967/'
+    
+#     GM1_SET = set([f[:-4] for f in os.listdir(GM1)])
 
 
 
+    vectors_paths = [
+                     '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/data/precomputed/',
+                     '/home/ec2-user/SageMaker/mariano/notebooks/04. Model of DP/precomputed/',
+                    ]
+    preloaded_extensions = [
+                            '_representations.p',
+                            '_glove.p',
+                           ]
     def __init__(self, *args):
         self._preloaded_vector={}
         if os.path.isfile(args[0]):
+            # When input is only a FILEPATH
             file_ = args[0]
             self.id_ = file_.split('/')[-1][:-4]
-            self.source = "GM1" if "GM_all_1945_1956" in file_ else "GM2"
-            self.label=DataItem.UNK_LABEL
+            self.source = '/'.join(file_.split('/')[:-1])
+#             self.source = "GM1" if "GM_all_1945_1956" in file_ else "GM2"
+            self.label=DataItem.UNK_LABEL    
+            assert os.path.isfile(self.filename())
         else:
-            id_ = args[0]
-            if len(args)>1:
-                source = args[1]
-                assert source=="GM1" or source=="GM2"
+            # When input is ID
+            self.id_ = args[0]
+            if len(args)>1: 
+                # when input is ID + source
+                self.source = args[1]
+#                 assert source=="GM1" or source=="GM2"
             else:
-                source = "GM1" if id_ in DataItem.GM1_SET else "GM2"
-            assert id_.isnumeric(), f'id={id_} - type(id_)={type(id_)}'
-            self.id_ = id_
-            self.source = source
+                # when input is only ID
+#                 source = "GM1" if id_ in DataItem.GM1_SET else "GM2"
+                for source in DataItem.sources:
+                    if os.path.isfile(os.path.join(source,self.id_+'.xml')):
+                        self.source=source
+                        break
+            assert self.id_.isnumeric(), f'id={id_} - type(id_)={type(id_)}'
+#             self.id_ = id_
+#             self.source = source
             self.label = DataItem.UNK_LABEL            
             assert os.path.isfile(self.filename())
+            
     def preload_vector(self, type_=TYPE_BOW):
         if type_ not in self._preloaded_vector:
             self._preloaded_vector[type_] = self.vector(type_=type_)
@@ -56,6 +76,7 @@ class DataItem(object):
 
     def _dict(self):
         return {'id': self.id_, 'source':self.source, 'label': self.label}
+    
     def from_dict(dict_):
         item = DataItem(dict_['id'])        
         item.label = dict_['label']
@@ -113,12 +134,12 @@ class DataItem(object):
                                                                     str(text))
     
     def filename(self):
-        filename = self.id_+'.xml'
-        if self.source == "GM1":
-            filename = DataItem.GM1+filename
-        else:
-            filename = DataItem.GM2+filename
-        assert os.path.isfile(filename)
+        filename = os.path.join(self.source,self.id_+'.xml')
+#         if self.source == "GM1":
+#             filename = DataItem.GM1+filename
+#         else:
+#             filename = DataItem.GM2+filename
+#         assert os.path.isfile(filename)
         return filename
     
     def has_vector(self):
@@ -133,7 +154,11 @@ class DataItem(object):
             self.set_irrelevant()
         
     def _vector_filename(self):
-        return DataItem.vectors_path+self.id_+'_glove.p'
+        for vector_path,extension in zip(DataItem.vectors_paths, DataItem.preloaded_extensions):
+            if os.path.isfile(os.path.join(vector_path,self.id_+extension)):
+                return os.path.join(vector_path,self.id_+extension)
+#         return DataItem.vectors_path+self.id_+'_glove.p'
+        assert False
     
     def vector(self, type_=TYPE_BOW):
         if not type_ in self._preloaded_vector:
@@ -141,21 +166,23 @@ class DataItem(object):
             assert os.path.isfile(self._vector_filename())
 
             data = pickle.load(open(self._vector_filename(), 'rb'))
-            if type_==DataItem.TYPE_BOW:
-                x = data[1].toarray()[0,:]
-            elif type_==DataItem.TYPE_GLOVE300:
-                x = data[0]
-                assert x.shape==(300,)
-            elif type_==DataItem.TYPE_HGGFC:
-                x = get_texts([self])
-#             else:
-#                 assert type_==DataItem.TYPE_GLOVE600
-#                 x = data[1]
-#                 assert x.shape==(600,)
-               
-            
-            x = normalize([x])[0,:]
-            return x
+            if type(data)==list:
+                if type_==DataItem.TYPE_BOW:
+                    x = data[1].toarray()[0,:]
+                elif type_==DataItem.TYPE_GLOVE300:
+                    x = data[0]
+                    assert x.shape==(300,)
+                elif type_==DataItem.TYPE_HGGFC:
+                    x = get_texts([self])
+    #             else:
+    #                 assert type_==DataItem.TYPE_GLOVE600
+    #                 x = data[1]
+    #                 assert x.shape==(600,)
+
+                x = normalize([x])[0,:]
+                return x
+            elif type(data)==dict:
+                return data['BoW'].toarray()[0,:]
         else:
             return self._preloaded_vector[type_]
     
@@ -173,7 +200,7 @@ class DataItem(object):
                 X[idx,:] = item.vector(type_=type_)
 
             if type_==DataItem.TYPE_BOW:
-                X = csr_matrix(X)
+                X = lil_matrix(X)
             return X
     
     def get_texts(item_list):
@@ -247,17 +274,22 @@ class DataItem(object):
         return self.confidence
     
     
+from scipy import sparse
 
 class QueryDataItem(object):
 #     vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/vocab_with_dp.txt'
-    vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/precomputed/vocab.txt'
+#     vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/precomputed/vocab.txt'
+    vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/data/vocab.txt'
+    idf_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/data/idf.txt'
+    idf = np.array([float(value) for value in open(idf_path, 'r').read().splitlines()])
     vocab =  open(vocab_path, 'r').read().splitlines()
     word2index = dict([(word,idx) for idx,word in enumerate(vocab)]) # dict([(linea.split(',')[1], int(linea.split(',')[0])) for linea in])
     nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
     def __init__(self, str_):
         self.text=str_
         self.label=DataItem.UNK_LABEL
-        
+        self.id_='synthetic'
+    
     def _dict(self):
         return {'text': self.text, 'label':self.label}
     def from_dict(dict_):
@@ -280,6 +312,9 @@ class QueryDataItem(object):
         for token in QueryDataItem._tokenize(self.text):
             if token in QueryDataItem.word2index:
                 vector[QueryDataItem.word2index[token]]+=1
+         
+
+        vector = vector * QueryDataItem.idf
         return normalize([vector,])[0,:]
     
     def has_vector(self):

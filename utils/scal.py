@@ -14,6 +14,7 @@ import json
 import os
 import logging
 from sklearn.metrics import pairwise_distances
+from bs4 import BeautifulSoup
 
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, confusion_matrix
 
@@ -36,27 +37,50 @@ class SCAL(object):
                 ):
         
         if not empty:
+            log_folder_created=False
+            session_folder_created=False
             if not os.path.exists(f'sessions/scal/{session_name}/log/'):
+                log_folder_created=True
                 if not os.path.exists(f'sessions/scal/{session_name}/'):
+                    session_folder_created=True
                     os.mkdir(f'sessions/scal/{session_name}/')
                 os.mkdir(f'sessions/scal/{session_name}/log/')
+                
             logging.basicConfig(filename=f'sessions/scal/{session_name}/log/scal_system.log', 
                                 format='%(asctime)s [%(levelname)s] %(message)s' ,
     #                             encoding='utf-8',                # INVALID WHEN CHANGE ENV (IMM -> BERT)
                                 datefmt='%Y-%m-%d %H:%M:%S',
-    #                             force=True,                      # INVALID WHEN CHANGE ENV (IMM -> BERT)
+                                force=True,                      # INVALID WHEN CHANGE ENV (IMM -> BERT)
                                 level=logging.DEBUG)
             logging.debug('-'*30+'STARTING SCAL'+'-'*30)
-            logging.debug(f'Size of initial labeled={len(labeled_collection)} - '\
-                          f'Size of full unlabeled collection={len(unlabeled_collection)} - '\
-                          f'Size of Random Sample(N)={random_sample_size} - '\
-                          f'Batch size cap(b)={batch_size_cap} - '\
-                          f'Target recall={target_recall} - Simualation={simulation} - Session Name={session_name}')
+            logging.debug('Creating new session from scratch (Creating non-empty instance to start SCAL process, NOT loading from disk).')
+            if session_folder_created:
+                logging.debug(f'Creating session folder: ./sessions/scal/{session_name}/')
+            if log_folder_created:
+                logging.debug(f'Creating log     folder: ./sessions/scal/{session_name}/log/')
+                
+#            logging.debug(f'Size of initial labeled={len(labeled_collection)} - '\
+#                          f'Size of full unlabeled collection={len(unlabeled_collection)} - '\
+#                          f'Size of Random Sample(N)={random_sample_size} - '\
+#                          f'Batch size cap(b)={batch_size_cap} - '\
+#                          f'Target recall={target_recall} - Simualation={simulation} - Session Name={session_name}')
+#            
+            self.using_relevance_feedback=True
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t session_name=                 {session_name}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t len(labeled_collection)=      {len(labeled_collection)}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t len(unlabeled_collection)=    {len(unlabeled_collection)}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t simulation=                   {simulation}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t diversity=                    {diversity}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t average_diversity=            {average_diversity}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t proportion_relevance_feedback={proportion_relevance_feedback}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t target_recall=                {target_recall}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t random_sample_size=           {random_sample_size}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t batch_size_cap=               {batch_size_cap}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t Using relevance feedback=     {self.using_relevance_feedback}')
             self.simulation=simulation
             self.diversity=diversity
             self.average_diversity=average_diversity
             self.proportion_relevance_feedback = proportion_relevance_feedback
-            self.using_relevance_feedback=True
             self.session_name=session_name
             self.target_recall=target_recall
             self.random_sample_size=random_sample_size
@@ -64,13 +88,21 @@ class SCAL(object):
             self.ran = np.random.default_rng(self.seed)
             self.B = 1 
             self.n = batch_size_cap
+                    
             self.random_unlabeled_collection = self.ran.choice(unlabeled_collection, 
                                                           size=min(self.random_sample_size,len(unlabeled_collection)), 
                                                           replace=False)
+
+            
+            
             self.full_U = self.random_unlabeled_collection
             self.cant_iterations = SCAL._cant_iterations(len(self.random_unlabeled_collection))
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t No. of iterations required=   {self.cant_iterations}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t Effort (# of labels required)={self._total_effort()+1}')
+            logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t seed (# of labels required)=  {self.seed}')
+
             self.Rhat=np.zeros(shape=(self.cant_iterations,))
-            self.j=-1
+            self.j=0            #-1
             self.labeled_collection = labeled_collection
             self.unlabeled_collection = unlabeled_collection
             self.removed = []
@@ -79,6 +111,8 @@ class SCAL(object):
             assert all([item.is_relevant() or item.is_irrelevant() for item in labeled_collection])
             self.all_texts = [item.get_htmldocview() for item in labeled_collection]
             self.all_labels = [SCAL.RELEVANT_LABEL if item.is_relevant() else SCAL.IRRELEVANT_LABEL for item in labeled_collection]
+        else:
+            logging.debug('Creating empty SCAL system object, parameters should be configured before using.')
 
     def to_disk(self):
         configuration = {'session-name':self.session_name,
@@ -94,7 +128,7 @@ class SCAL(object):
                          'n': self.n,
                          'b': self.b,
                          'random-unlabeled-collection': [item._dict() for item in self.random_unlabeled_collection],
-                         'U0': [item._dict() for item in self.full_U], 
+                         'full-U': [item._dict() for item in self.full_U], 
                          'cant-iterations': self.cant_iterations,
                          'Rhat': list(self.Rhat),
                          'j': self.j,
@@ -114,18 +148,34 @@ class SCAL(object):
 #             if not os.path.exists(f'sessions/scal/{session_name}/log/'):
 #                 os.mkdir(f'sessions/scal/{self.session_name}/log')
             os.mkdir(f'sessions/scal/{self.session_name}/models')
+            logging.debug(f'Creating data   folder: ./sessions/scal/{self.session_name}/data')
+            logging.debug(f'Creating models folder: ./sessions/scal/{self.session_name}/models')
             
         for idx,model in enumerate(self.models):
-            model.to_disk(f'sessions/scal/{self.session_name}/model_{idx}')
+            model.to_disk(f'sessions/scal/{self.session_name}/models/model_{idx}')
+        logging.debug(f'Saving {len(self.models)} models into model folder (sessions/scal/{self.session_name}/models/).')
         with open(f'sessions/scal/{self.session_name}/data/configuration.json','w') as outputfile:
-            outputfile.write(json.dumps(configuration, indent=4)) 
+            outputfile.write(json.dumps(configuration, indent=4))
+        logging.debug(f'Saving configuration file into data folder         (sessions/scal/{self.session_name}/data/).') 
                 
         
     def from_disk(session_name):
+        logging.basicConfig(filename=f'sessions/scal/{session_name}/log/scal_system.log', 
+                            format='%(asctime)s [%(levelname)s] %(message)s' ,
+#                             encoding='utf-8',                # INVALID WHEN CHANGE ENV (IMM -> BERT)
+                            datefmt='%Y-%m-%d %H:%M:%S',
+                            force=True,                      # INVALID WHEN CHANGE ENV (IMM -> BERT)
+                            level=logging.DEBUG)
+        logging.debug('-'*30+'LOADING  SCAL'+'-'*30)
+        
         with open(f'sessions/scal/{session_name}/data/configuration.json', 'r') as f:
             configuration = json.load(f)
+            
+        logging.debug(f'Loading SCAL system configuration file (./sessions/scal/{session_name}/data/configuration.json).')
         scal = SCAL(empty=True)
+        
         scal.session_name=configuration['session-name'] #session_name
+        
         scal.simulation=configuration['simulation'] #session_name
         scal.target_recall=configuration['target-recall']
         scal.proportion_relevance_feedback = configuration['proportion-relevance-feedback']
@@ -139,7 +189,7 @@ class SCAL(object):
         scal.diversity = configuration['diversity']
         scal.average_diversity = configuration['average-diversity']
         scal.random_unlabeled_collection = [DataItem.from_dict(dict_) for dict_ in configuration['random-unlabeled-collection']] 
-        scal.U0 = [DataItem.from_dict(dict_) for dict_ in configuration['U0']] 
+        scal.full_U = [DataItem.from_dict(dict_) for dict_ in configuration['full-U']] 
         scal.cant_iterations =  configuration['cant-iterations']
         scal.Rhat= np.array(configuration['Rhat']) #np.zeros(shape=(self.cant_iterations+1,))
         scal.j=configuration['j']            
@@ -152,19 +202,35 @@ class SCAL(object):
 #         scal.models=configuration['models']
         scal.precision_estimates=configuration['precision-estimates']
     
+    
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t session_name=                 {scal.session_name}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t len(labeled_collection)=      {len(scal.labeled_collection)}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t len(unlabeled_collection)=    {len(scal.unlabeled_collection)}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t simulation=                   {scal.simulation}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t diversity=                    {scal.diversity}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t average_diversity=            {scal.average_diversity}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t proportion_relevance_feedback={scal.proportion_relevance_feedback}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t target_recall=                {scal.target_recall}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t random_sample_size=           {scal.random_sample_size}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t batch_size_cap=               {scal.n}')
+        logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t Using relevance feedback=     {scal.using_relevance_feedback}')
+        
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t No. of iterations required=   {scal.cant_iterations}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t Effort (# of labels required)={scal._total_effort()+1}')
+        logging.debug(f'SCAL LOADED  CONFIGURATION.\t\t seed (# of labels required)=  {scal.seed}')
+        
+        # MODELS
         scal.models=[]
-        for idx,model in enumerate([file for file in os.listdir(f'sessions/scal/{session_name}/') if 'model_' in file and file.endswith('json')]):
-            scal.models.append(TermHighlighter.from_disk(f'sessions/scal/{session_name}/{model[:-5]}'))
-            
+        for idx,model in enumerate([file for file in os.listdir(f'sessions/scal/{session_name}/models/') if 'model_' in file and file.endswith('json')]):
+            scal.models.append(TermHighlighter.from_disk(f'sessions/scal/{session_name}/models/{model[:-5]}'))
+        logging.debug(f'Loading {len(scal.models)} models from disk (./sessions/scal/{session_name}/models/).')
+        
         scal.all_texts = configuration['all-texts']
         scal.all_labels = configuration['all-labels']
-        logging.basicConfig(filename=f'sessions/scal/{session_name}/log/scal_system.log', 
-                            format='%(asctime)s [%(levelname)s] %(message)s' ,
-#                             encoding='utf-8',                # INVALID WHEN CHANGE ENV (IMM -> BERT)
-                            datefmt='%Y-%m-%d %H:%M:%S',
-#                             force=True,                      # INVALID WHEN CHANGE ENV (IMM -> BERT)
-                            level=logging.DEBUG)
 
+        
+        
+        
         return scal
         # use from_dict in DataItem and change Rhat to numpy
     
@@ -188,11 +254,14 @@ class SCAL(object):
 #               f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
 #               f' - cant_rel={self._relevant_count()} - precision={current_precision} - Uj_size={current_Uj_size}'
 #              ) 
-    def resume(self):
-        pass
+#     def resume(self):
+#         pass
+
     def run(self):
-        self.j=0
+#         self.j=0    # WRONG
+        logging.debug('(RE)STARTING SCAL algorithm')
         self.loop()
+        
     def _extend_with_random_documents(self):    
         assert all([item.is_unknown() for item in self.random_unlabeled_collection])
         extension = self.ran.choice(self.random_unlabeled_collection, size=min(100,len(self.random_unlabeled_collection)), replace=False)
@@ -315,36 +384,67 @@ class SCAL(object):
         str_+= '-' if (effort%total_effort)!=0 else ''
         print(str_+' '*(size-len(str_)-len(end_)) +end_)
         
+        
+    def _show_ids(item_list):
+        if len(item_list)==0:
+            return '<>'
+        elif len(item_list)==1:
+            return f'<{item_list[0].id_}({item_list[0].label})>'
+        elif len(item_list)==2:
+            return f'<{item_list[0].id_}({item_list[0].label}), {item_list[1].id_}({item_list[1].label})>'
+        elif len(item_list)==3:
+            return f'<{item_list[0].id_}({item_list[0].label}), {item_list[1].id_}({item_list[1].label}), {item_list[2].id_}({item_list[2].label})>'
+        elif len(item_list)==4:
+            return f'<{item_list[0].id_}({item_list[0].label}), {item_list[1].id_}({item_list[1].label}), {item_list[2].id_}({item_list[2].label}), {item_list[3].id_}({item_list[3].label})>'
+        else:
+            return f'<{item_list[0].id_}({item_list[0].label}), {item_list[1].id_}({item_list[1].label}), ..., {item_list[-2].id_}({item_list[-2].label}), {item_list[-1].id_}({item_list[-1].label})>'
+            
     def loop(self):
         # STATUS BAR
         if not self.simulation:
             print('-'*109)
-            print(f'Session name: {self.session_name}')
+            print(f'Session name:       {self.session_name:50}  Total size of database: {len(self.unlabeled_collection):,}')
+            print(f"Topic description:  '{BeautifulSoup(self.labeled_collection[0].get_htmldocview(),'html.parser').get_text()}'")
+            print('- '*54+'-')
             print(f'Labeled documents: {len(self.labeled_collection)} '\
                   f'({self._relevant_count():8,} relevant / {self._irrelevant_count():8,} irrelevants)\t\t'\
-                  f'Unlabeled documents: {self._unlabeled_in_sample():8,}')
+                  f' Unlabeled documents: {self._unlabeled_in_sample():8,}')
             self._progress_bar(109)
             print('-'*109)
             # ~
         
-        
+        # LOG iteration no. X started
+        logging.debug(f' >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> LOOP started IT # {self.j+1} (j={self.j}) ')
         self.b = self.B if (self.Rhat[self.j]==1 or self.B<=self.n) else self.n
         assert self.b<=self.B
+        logging.debug(f'IN-LOOP. Labeling batch =       {self.b}.')
         precision = f'{self.precision_estimates[-1]:4.3f}' if len(self.precision_estimates)>0 else 'N/A'
         
+        # LOG batch size min(x,cap)=y
         
-
+        
         extension = self._extend_with_random_documents()
+        logging.debug(f'IN-LOOP. Extension with random {len(extension)} documents (<{extension[0].id_}({extension[0].label}), ..., {extension[-1].id_}({extension[-1].label})>).')
         
 
-        
+        # new model created, 
         self.models.append(SCAL._build_classifier(list(extension)+list(self.labeled_collection)))
+        logging.debug(f'IN-LOOP. New model trained with {len(list(extension)+list(self.labeled_collection))} documents '\
+                      f'({SCAL._show_ids(list(extension)+list(self.labeled_collection))}).')
+
         SCAL._label_as_unknown(extension)
         self.sorted_docs = self._select_highest_scoring_docs()
+        logging.debug(f'IN-LOOP. Looking for            {len(self.sorted_docs)} most relevant documents '\
+                f'({SCAL._show_ids(self.sorted_docs)})')
 
         self.random_sample_from_batch = self.ran.choice(self.sorted_docs, size=self.b, replace=False)
-
+                  
+        logging.debug(f'IN-LOOP. Random sample          {len(self.random_sample_from_batch)} documents from suggested relevant '\
+                f'({SCAL._show_ids(self.sorted_docs)})')
+                  
+        logging.debug('Computing scores to be used as highlighting ...')
         yhat = self.models[-1].predict(self.random_sample_from_batch)
+                  
         text_for_label = [suggestion.get_htmldocview(highlighter=self.models[-1], confidence_score=confidence)
                           for suggestion,confidence in zip(self.random_sample_from_batch,yhat)]
         client_current_index = len(self.all_texts)+1
@@ -375,19 +475,32 @@ class SCAL(object):
         if not self.simulation:
             self.all_labels = list(self.annotations["label"])
         else:
+            logging.debug('AFTER LOOP. Label information extracted from Oracle.') 
             # SIMULATION
             self.all_labels += [ SCAL.RELEVANT_LABEL if Oracle.is_relevant(item) else  SCAL.IRRELEVANT_LABEL 
                                   for item in self.random_sample_from_batch ] 
             
+        new_labels_str = [f'({item.id_},{label})' for label,item in zip(self.all_labels[-self.b:], self.random_sample_from_batch)]
+        assert self.b==len(self.random_sample_from_batch)
+        logging.info(f'AFTER LOOP. NEW LABELS (#{self.b:3}). ' + ';'.join(new_labels_str))
+        logging.info(f'AFTER LOOP. PRECISION: {len([item for item in self.random_sample_from_batch if item.is_relevant()])/self.b} ')
+        logging.info(f'AFTER LOOP. NO. OF RELEVANT ARTICLES FOUND: '\
+                     f'{len([item for item in self.random_sample_from_batch if item.is_relevant()])} ')
+                           
         self.labeled_collection = list(self.labeled_collection) + list(self.random_sample_from_batch)
+      
         for item,label in zip(self.labeled_collection, self.all_labels):
             assert label==SCAL.RELEVANT_LABEL or label==SCAL.IRRELEVANT_LABEL
             label = DataItem.REL_LABEL if label==SCAL.RELEVANT_LABEL else DataItem.IREL_LABEL
             item.assign_label(label)   
 #         print(f'cantidad de relevantes={len([item for item in self.labeled_collection if item.is_relevant()])}')     
 
-            
-        self.random_unlabeled_collection = self._remove_from_unlabeled(self.sorted_docs)    
+        logging.info(f'AFTER LOOP. New labeled collection {list(self.labeled_collection)} documents '\
+                      f'({SCAL._show_ids(list(self.labeled_collection))}).')  
+                  
+        self.random_unlabeled_collection = self._remove_from_unlabeled(self.sorted_docs)
+        logging.info(f'AFTER LOOP. New unlabeled collection {list(self.unlabeled_collection)} documents '\
+          f'({SCAL._show_ids(list(self.unlabeled_collection))}).') 
         self.removed.append([elem for elem in self.sorted_docs ])
         
         self.size_of_Uj = len([elem for elem in self.full_U if not elem in set([elem for list_ in self.removed for elem in list_])])
@@ -401,8 +514,8 @@ class SCAL(object):
         self.B += int(np.ceil(self.B/10))
         self.B = min(self.B, len(self.random_unlabeled_collection))
 
-        logging.debug(f'it={self.j+1:>4}/{self.cant_iterations:4} - B={self.B:<5,} - b={self.b:3} - Rhat={self.Rhat[self.j]} -'\
-              f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
+        logging.info(f'SCAL IT LOG. it={self.j+1:>4}/{self.cant_iterations:4} - B={self.B:<5,} - b={self.b:3} - Rhat={self.Rhat[self.j]}'\
+              f' - len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
               f' - cant_rel={self._relevant_count()} - precision={self.precision_estimates[-1]:4.3f} - Uj_size={self.size_of_Uj:6}'
              ) 
         self.j+=1
@@ -418,6 +531,9 @@ class SCAL(object):
 
 
     def finish(self):
+        logging.debug(f'SCAL PROCESS FINISHED. Process finished. Number of labeled articles={len(self.labeled_collection)}'\
+                                           f' Number of unlabeled articles in the random sample={len(self.random_unlabeled_collection)}')
+                  
 
 #         logging.debug(f'it=  end    - B={self.B:<5,} - b={self.b:2} - Rhat={self.Rhat[self.j-1]:8.3f} -'\
 #               f' len_unlabeled= {len(self.random_unlabeled_collection):6,} - len_labeled={len(self.labeled_collection):6,}'\
@@ -487,28 +603,32 @@ class SCAL(object):
 #                       f'size of Uj={len(Uj)} - '\
 #                       f'size of Uo\\Uj={len([elem for elem in self.full_U if not elem in Uj])}')
 #         print(f'threshold={t}')
+        logging.debug('Creating final classifier ...')
         self.models.append(SCAL._build_classifier(self.labeled_collection))
 #         print(f'Rhat={self.Rhat}')
 #         print(f'Size of unlabeled={len(self.unlabeled_collection)}')
 #         print(f'Size of labeled={len(self.labeled_collection)}')
+        logging.debug(f'Removing {len(self.labeled_collection[1:])} labeled documents from full unlabeled collection.')
         final_unlabeled_collection = [item for item in self.unlabeled_collection if not item in self.labeled_collection[1:]]
 #         print(f'Size of unlabeled after removing labeled={len(final_unlabeled_collection)}')
         
 #         print(f'proportion={self.proportion_relevance_feedback}')
+        logging.debug(f'Making prediction over set of unlabeled articles ({len(final_unlabeled_collection):,}).')
         yhat = self.models[-1].predict(final_unlabeled_collection)
         relevant = yhat>=t
+        logging.info(f'Found {np.sum(relevant)} possible relevant articles.')
 #         print(f'Shape of yhat={yhat.shape}')
 #         print(f'Number of relevant={np.sum(yhat>=t)}')
         
         
         logging.debug('-'*30+'FINISHING SCAL'+'-'*30)
-        logging.debug(f'Final   labeled size   ={len(self.labeled_collection)}')
-        logging.debug(f'Final unlabeled size   ={len(final_unlabeled_collection)}')
-        logging.debug(f'Est. prevalecence      ={(self.prevalecence):4.3f}')
-        logging.debug(f'Exp. relevant in sample={no_of_expected_relevant:4.3f}')
-        logging.debug(f'j                      ={j}')
-        logging.debug(f'Threshold              ={t}')
-        logging.debug(f'Relevant found (total) ={len([item for item in self.labeled_collection if item.is_relevant()])+np.sum(relevant)}'\
+        logging.info(f'Final   labeled size   ={len(self.labeled_collection)}')
+        logging.info(f'Final unlabeled size   ={len(final_unlabeled_collection)}')
+        logging.info(f'Est. prevalecence      ={(self.prevalecence):5.4f}')
+        logging.info(f'Exp. relevant in sample={no_of_expected_relevant:,}')
+        logging.info(f'j                      ={j}')
+        logging.info(f'Threshold              ={t}')
+        logging.info(f'Relevant found (total) ={len([item for item in self.labeled_collection if item.is_relevant()])+np.sum(relevant)}'\
                       f'({len([item for item in self.labeled_collection if item.is_relevant()])} labeled / {np.sum(relevant)} suggested)')
 
 #         print(f'Relevant count: {np.sum(relevant)}')
@@ -526,6 +646,7 @@ class SCAL(object):
         
 #         print(f'len(relevant_data)={len(relevant_data)}')
 #         print(f'len(confidence)   ={len(confidence)}')
+        logging.debug('Preparing file for exporting ...')
         filename = f'sessions/scal/{self.session_name}/data/exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
         with open(filename, 'w') as writer:
             writer.write('URL,relevant_or_suggested,confidence\n')
@@ -538,14 +659,14 @@ class SCAL(object):
                 count+=1
                 
                       
-#         if send_email:
-#             assert os.path.isfile(filename)
-#             temp_file ='exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
-#             shutil.copyfile(filename, temp_file)
-#             assert os.path.isfile(temp_file)
-#             os.system(f'aws s3 cp {temp_file} s3://pq-tdm-studio-results/tdm-ale-data/623/results/')
-#             os.remove(temp_file)
-#             logging.debug('E-mail sending enabled, email sent [OK].')
+        if send_email:
+            assert os.path.isfile(filename)
+            temp_file ='exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
+            shutil.copyfile(filename, temp_file)
+            assert os.path.isfile(temp_file)
+            os.system(f'aws s3 cp {temp_file} s3://pq-tdm-studio-results/tdm-ale-data/623/results/')
+            os.remove(temp_file)
+            logging.debug(f'File {temp_file} sent over email.')
             
         if self.simulation:
             ytrue = [1 if Oracle.is_relevant(item) else 0 for item in final_unlabeled_collection]
@@ -562,7 +683,7 @@ class SCAL(object):
 #             print(f'Precision: {prec:4.3f}')
 #             print(f'Recall:    {rec:4.3f}')
 #             print(f'F1-score   {f1:4.3f}')
-        print('FINISH simulation')
+            print('FINISH simulation')
         return relevant_data, confidence
 #         return _get_relevant(model, prevalecence, unlabeled_collection)
         

@@ -25,7 +25,9 @@ if __name__=='__main__':
         print('[USAGE]')
         print(f'python {sys.argv[0]} /home/ec2-user/SageMaker/data/GM_all_1945_1956/ --debug '\
                 '--continue --vocab-file=../precomputed/vocab.txt '\
-                '--idf-files=../precomputed/idf.txt')
+                '--idf-file=../precomputed/idf.txt '\
+                '--output-folder=../data/precomputed/'
+             )
         print()
         sys.exit(0)
 
@@ -73,7 +75,13 @@ if __name__=='__main__':
         sys.exit(1)
     idf_file = idf_file[0]
 
-
+    # INPUT #6
+    output_folder=re.findall('--output-folder=([^\ ]*)', input_)
+    if len(output_folder)==0:
+        print('Please indicate input file (python script.py --output-folder=../data/precomputed/')
+        sys.exit(1)
+    output_folder=output_folder[0]
+    
     ###        
     vocab = open(vocab_file, 'r').read().splitlines()
     word2index = dict([(word,idx) for idx,word in enumerate(vocab)])
@@ -105,36 +113,36 @@ if __name__=='__main__':
 
     def process_file(file):
         id_ = file.split('/')[-1][:-4]
-        precomputed_file = f"/home/ec2-user/SageMaker/mariano/notebooks/04. Model of DP/precomputed/{file.split('/')[-1][:-4]}"
-        precomputed_file = precomputed_file+'_glove.p'
+        precomputed_file = os.path.join(output_folder,file.split('/')[-1][:-4])
+        precomputed_file = precomputed_file+'_representations.p'
         if os.path.isfile(precomputed_file):
-            list_ = pickle.load(open(precomputed_file,'rb'))
-            if len(list_)==4:          
-                
-                vec = sparse.lil_matrix((1, len(vocab)))
-                token_list = tokenizer.tokenize(get_title_and_text(file))
-                ngram_list = list(token_list)
-                ngram_list += [' '.join(ngram) for ngram in Tokenizer.ngrams(ngram_list)]
+            vectors = pickle.load(open(precomputed_file,'rb'))
+        else:
+            vectors={}
+        # Empty representation        
+        vec = sparse.lil_matrix((1, len(vocab)))
+        
+        # Tri-, bi-, and unigrams in file
+        token_list = tokenizer.tokenize(get_title_and_text(file))
+        ngram_list = list(token_list)
+        ngram_list += [' '.join(ngram) for ngram in Tokenizer.ngrams(ngram_list)]
+        ngram_list = filter(lambda ngram: ngram in word2index , ngram_list)
+        
+        # Update representation
+        for ngram in ngram_list:
+            vec[0, word2index[ngram]]+=1
+        # Apply IDF
+        vec = vec.multiply(idf)
+        # Normalize
+        vec = normalize(vec, axis=1)
+        vectors['BoW']=vec
+        # Save representation
+        pickle.dump(vectors, open(precomputed_file, 'wb'))
 
-                ngram_list = filter(lambda ngram: ngram in word2index , ngram_list)
-                for ngram in ngram_list:
-                    vec[0, word2index[ngram]]+=1
-                vec = vec.multiply(idf)
-                vec = normalize(vec, axis=1)
-                list_.append(vec)
-                assert len(list_)==5
-                assert list_[0].shape==(300,) and list_[1].shape==(600,) 
-                assert list_[2].shape==(1,10000) and list_[3].shape==(1,10000) and list_[4].shape==(1,10000)
-                assert type(list_[0])==np.ndarray and type(list_[1])==np.ndarray
-                assert type(list_[2])==sparse._csr.csr_matrix
-                assert type(list_[3])==sparse._csr.csr_matrix
-                assert type(list_[4])==sparse._csr.csr_matrix
-                pickle.dump(list_, open(precomputed_file, 'wb'))
-#                 print(', '.join([str(type(vec)) for vec in list_])+','+', '.join([str(vec.shape) for vec in list_]))
-                wlock.acquire()
-                writer.write(f'{id_}\n')
-                writer.flush()
-                wlock.release()
+        wlock.acquire()
+        writer.write(f'{id_}\n')
+        writer.flush()
+        wlock.release()
     ok('Starting concurrent process')
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         executor.map(process_file, files, chunksize=4000)

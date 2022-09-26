@@ -7,6 +7,7 @@ sys.path.append('..')
 
 from utils.tdmstudio import get_title_and_text
 from utils.tokenizer import Tokenizer
+from utils.io import info,warning
 
 
 if __name__=='__main__':
@@ -18,7 +19,9 @@ if __name__=='__main__':
                 '--debug --unigram-file=../precomupted/uni_gram_freq.txt '\
                 '--ngram-file=../precomputed/ngram_freq.txt '\
                 '--vocab-file=../precomputed/vocab.txt '\
-                '--rancom-sample=5000000')
+                '--rancom-sample=5000000'\
+                '--add=multicultural'
+                )
         print()
         sys.exit(0)
     
@@ -72,6 +75,13 @@ if __name__=='__main__':
         ran = np.random.default_rng(2020)
         files = ran.choice(files, size=random_sample,replace=False)
         
+    # INPUT #8: additional words
+    additional=re.findall('--add=([^\ ]*)', input_)
+    if len(additional)!=len(set(additional)):
+        warning(f'Repeated additional words. Removing duplicates {len(additional)-len(set(additional))}...')
+        additional = list(set(additional))
+        info(f'Aditional words: {additional}')
+    
         
     
     tokenizer = Tokenizer()
@@ -81,8 +91,25 @@ if __name__=='__main__':
 
     freq = sorted(freq, key=lambda x: x[1],reverse=True)[:10000]
 
-    freq=dict(freq)
-    vocab = list([word for word in freq])
+    for word in set(additional).intersection(set([word for word,frecuency in freq])):
+        warning(f'Word already in vocabulary, removing: {word}')
+        additional.remove(word)
+
+    for idx,word in enumerate(additional):
+        info(f'Removing word {freq[-(idx+1)][0]:20} for additional: {word:20} ')
+
+    #freq=dict(freq)
+    if len(additional)>0:
+        vocab = list([word for word,frequency in freq[:-len(additional)]])
+        info(f'Size of vocab without additionals={len(vocab)}')
+        vocab = vocab + additional
+        for word in additional:
+            info(f'Including {word:20} in the vocabulary')
+
+        info(f'Size of vocab with    additionals={len(vocab)}')
+    else:
+        vocab = list([word for word,frequency in freq])
+
     
     with open(vocab_file, 'w') as f:
         f.write('\n'.join(vocab))
