@@ -10,6 +10,7 @@ import json
 from utils.data_item import QueryDataItem
 import os
 
+from tqdm import tqdm
 from sklearn.model_selection import cross_validate, StratifiedKFold
 import pandas as pd
 from sklearn.base import clone
@@ -75,22 +76,25 @@ class TermHighlighter(object):
         return f'<TermHighlighter model={self.model} trained={self.trained} vocab=<{self.vocab[0]}, ..., {self.vocab[1]}>>'
     
     
-    def _optimized_logreg_prediction(self, item_list, batch_size=80530):
+    def _optimized_logreg_prediction(self, item_list, batch_size=80530,progress_bar=False):
         
         linear_model = self.model
         vecnames = [item._vector_filename() for item in item_list]
 
         yhat = np.zeros(shape=(len(vecnames)))
         yhats = []
-        for ini in range(0,len(vecnames), batch_size):
+        iterable = range(0,len(vecnames), batch_size)
+        if progress_bar:
+            iterable=tqdm(iterable)
+        for ini in iterable:
             fin = min(ini+batch_size, len(vecnames))
             X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))['BoW'], vecnames[ini:fin])),axis=1)
             X[:,:-2]=0
             yhats.append(linear_model.predict_proba(X)[:,1])
         return np.hstack(yhats)
     
-    def predict(self,item_list):
-        return self._optimized_logreg_prediction(item_list)
+    def predict(self,item_list, progress_bar=False):
+        return self._optimized_logreg_prediction(item_list,progress_bar=progress_bar)
     
     def predict_old(self,item_list):
         assert self.trained
@@ -155,60 +159,73 @@ class TermHighlighter(object):
 #             idx+=1
             
         return TermHighlighter._highlight(text, index_pairs)
-    def _overlap(pair1, pair2):
-        if pair1[0]==pair2[0]:
-            return True
-        elif pair1[0]<pair2[0]:
-            return not pair1[1]<=pair2[0]
-        else:
-            return not pair2[1]<=pair1[0]
+#     def _overlap(pair1, pair2):
+#         if pair1[0]==pair2[0]:
+#             return True
+#         elif pair1[0]<pair2[0]:
+#             return not pair1[1]<=pair2[0]
+#         else:
+#             return not pair2[1]<=pair1[0]
         
-    def _longer(pair_list):
-        max_len = pair_list[0][1]-pair_list[0][0]
-        position=0
-        for idx,pair in enumerate(pair_list[1:]):
-            len_aux = pair[1] - pair[0]
-            if len_aux>max_len:
-                position=idx+1
-                max_len=len_aux
-        return pair_list[position]
+#     def _longer(pair_list):
+#         max_len = pair_list[0][1]-pair_list[0][0]
+#         position=0
+#         for idx,pair in enumerate(pair_list[1:]):
+#             len_aux = pair[1] - pair[0]
+#             if len_aux>max_len:
+#                 position=idx+1
+#                 max_len=len_aux
+#         return pair_list[position]
 
-    
+    def _no_overlaping_in_list(index_pairs):
+        flat_list = [elem for ini,fin,_ in sorted(index_pairs, key=lambda x:x[0]) for elem in [ini,fin]]
+        return all(flat_list[i] <= flat_list[i+1] for i in range(len(flat_list) - 1))
     def _remove_overlaping(index_pairs,text):
         new_list=[]
-        if len(index_pairs)>0:
-            position =  min([ini for ini,fin,_ in index_pairs])
-            end = max([fin for ini,fin,_ in index_pairs])
-#             print(f'going from: {position} to {end}')
-            while position<end:
-                contained_pairs = [(ini,fin,score) for ini,fin,score in index_pairs if ini<=position and position<fin]
-#                 print(f'Pairs found: {contained_pairs}')
-                if len(contained_pairs)>0:
-                    best = sorted(contained_pairs, key=lambda x:x[2], reverse=True)[0] # Item with highest score
-                    new_list.append(best)
-#                     increment = max([fin for ini,fin,_ in contained_pairs])
-                    position=best[1]+1
-#                     print(f'New position {position} ({position-best[1]-1}+{best[1]}+1)')
-                else:
-                    position+=1
-#                 if len(contained_pairs)>1:
-#                     valid_pairs = ';'.join([text[ini:fin] for ini,fin, _ in contained_pairs])
-#                     best_pair=text[best[0]:best[1]]
-#                     print(f'Replacing {valid_pairs} for {best_pair}.-')
-#                     print(f'Replacing '+';'.join([str((ini,fin)) for ini,fin,_ in contained_pairs])+' for '+str((best[0], best[1]) ))
-                for item in contained_pairs:
-                    index_pairs.remove(item)
-#                     print(f'New position {position} ({position}+1)')
-#             print('end while')
-            if len(new_list)>0:
-                position =  min([ini for ini,fin,_ in new_list])
-                end = max([fin for ini,fin,_ in new_list])
-                for position in range(position,end):
-                    contained_pairs = [(ini,fin,score) for ini,fin,score in index_pairs if ini<=position and position<fin]
-                    assert len(contained_pairs)<=1
-#                 print('process ok')
-                    
+        for elem in sorted(index_pairs,key=lambda x:x[2]):
+            if TermHighlighter._no_overlaping_in_list(new_list+[elem]):
+                new_list.append(elem)
         return sorted(list(set(new_list)), key=lambda x:x[0], reverse=True)
+#         return new_list
+#             assert all(flat_list[i] <= flat_list[i+1] for i in range(len(flat_list) - 1))
+            
+#         new_list=[]
+#         if len(index_pairs)>0:
+#             position =  min([ini for ini,fin,_ in index_pairs])
+#             end = max([fin for ini,fin,_ in index_pairs])
+# #             print(f'going from: {position} to {end}')
+#             while position<end:
+#                 contained_pairs = [(ini,fin,score) for ini,fin,score in index_pairs if ini<=position and position<fin]
+# #                 print(f'Pairs found: {contained_pairs}')
+#                 if len(contained_pairs)>0:
+#                     best = sorted(contained_pairs, key=lambda x:x[2], reverse=True)[0] # Item with highest score
+#                     new_list.append(best)
+# #                     increment = max([fin for ini,fin,_ in contained_pairs])
+#                     position=best[1]+1
+# #                     print(f'New position {position} ({position-best[1]-1}+{best[1]}+1)')
+#                 else:
+#                     position+=1
+# #                 if len(contained_pairs)>1:
+# #                     valid_pairs = ';'.join([text[ini:fin] for ini,fin, _ in contained_pairs])
+# #                     best_pair=text[best[0]:best[1]]
+# #                     print(f'Replacing {valid_pairs} for {best_pair}.-')
+# #                     print(f'Replacing '+';'.join([str((ini,fin)) for ini,fin,_ in contained_pairs])+' for '+str((best[0], best[1]) ))
+#                 for item in contained_pairs:
+#                     index_pairs.remove(item)
+# #                     print(f'New position {position} ({position}+1)')
+# #             print('end while')
+# #             if len(new_list)>0:
+# #                 position =  min([ini for ini,fin,_ in new_list])
+# #                 end = max([fin for ini,fin,_ in new_list])
+# #                 for position in range(position,end):
+# #                     contained_pairs = [(ini,fin,score) for ini,fin,score in index_pairs if ini<=position and position<fin]
+# #                     assert len(contained_pairs)<=1
+# #                 print('process ok')
+                    
+#         return sorted(list(set(new_list)), key=lambda x:x[0], reverse=True)
+    
+    
+    
 #         for pair1 in index_pairs:
 #             overlapping_pairs = [p for p in index_pairs if TermHighlighter._overlap(p,pair1) ]
 #             new_list.append(TermHighlighter._longer(overlapping_pairs))
@@ -237,25 +254,29 @@ class TermHighlighter(object):
 #                     w.write('\n-------------------------------------\n')
 #                     w.write('\n'.join([str(p) for p in index_pairs])+'\n\n')
 
-                    
+            flat_list = [elem for ini,fin,_ in sorted(index_pairs, key=lambda x:x[0]) for elem in [ini,fin]]
+#             assert all(flat_list[i] <= flat_list[i+1] for i in range(len(flat_list) - 1))
+        
+        
             max_ = np.max(np.abs([coef for _,_,coef in index_pairs ]))
-            
             if max_==0:
                 max_=1
 #             signs = np.array(coefs)>0
 #             coefs = np.abs(coefs)
 #             coefs = coefs/max(coefs)
             pos=0
+
             for ini,fin,coef in index_pairs:
+                
 #                 coef = coefs[pos]
 #                 sign = signs[pos]
     #             full_color = 255 - 255*coef
                 len_ = fin-ini
-                if coef>0:
-                    middle_color = 255 - 145*(coef/max_)
+                if coef<=0:
+                    middle_color = 255 - 145*((-coef)/max_)
                     text = text[:ini] +f'<mark style="background-color:rgb({255},{middle_color},{middle_color})">'+text[ini:fin]+'</mark>' +text[ini+len_:]
                 else:
-                    middle_color = 255 - 255*(coef/max_)
+                    middle_color = 255 - 145*((coef)/max_)
                     text = text[:ini] +f'<mark style="background-color:rgb({middle_color},{255},{middle_color})">'+text[ini:fin]+'</mark>' +text[ini+len_:]
                 pos+=1
         return text

@@ -259,8 +259,13 @@ class SCAL(object):
 
     def run(self):
 #         self.j=0    # WRONG
-        logging.debug('(RE)STARTING SCAL algorithm')
-        self.loop()
+        if self.j<self.cant_iterations:
+            # ONLY RUN IF THERE IS ANY ITERATION LEFT TO DO. 
+            logging.debug('(RE)STARTING SCAL algorithm')
+            self.loop()
+        else:
+            logging.debug('Attempt to run an already finished SCAL process. Skipping ...')
+            print('SCAL PROCESS FINISHED. Nothing to do skipping. ')
         
     def _extend_with_random_documents(self):    
         assert all([item.is_unknown() for item in self.random_unlabeled_collection])
@@ -440,7 +445,7 @@ class SCAL(object):
         self.random_sample_from_batch = self.ran.choice(self.sorted_docs, size=self.b, replace=False)
                   
         logging.debug(f'IN-LOOP. Random sample          {len(self.random_sample_from_batch)} documents from suggested relevant '\
-                f'({SCAL._show_ids(self.sorted_docs)})')
+                f'({SCAL._show_ids(self.random_sample_from_batch)})')
                   
         logging.debug('Computing scores to be used as highlighting ...')
         yhat = self.models[-1].predict(self.random_sample_from_batch)
@@ -452,7 +457,7 @@ class SCAL(object):
         df = pd.DataFrame(
                        {
                         'example': self.all_texts,
-                        'changed':[True]*len(self.all_texts),
+                        'changed':[False]*len(self.all_texts),
                         'label':self.all_labels+([None]*len(text_for_label))
                        }
                       )
@@ -473,19 +478,24 @@ class SCAL(object):
         
     def after_loop(self):
         if not self.simulation:
+            new_labels =  list(self.annotations["label"])
+            assert len(new_labels[:-self.b]) == len(self.all_labels)
+            count=0
+            for old, new in zip(self.all_labels, new_labels[:-self.b]):
+                  if old!=new:
+                      logging.debug(f'WARNING. Label changed for item id={self.labeled_collection[count].id_} from {old} to {new} '\
+                                    f'NEW LABEL: ({self.labeled_collection[count].id_},{new})')
+                  count+=1
+                  
+            
             self.all_labels = list(self.annotations["label"])
         else:
+                  
             logging.debug('AFTER LOOP. Label information extracted from Oracle.') 
             # SIMULATION
             self.all_labels += [ SCAL.RELEVANT_LABEL if Oracle.is_relevant(item) else  SCAL.IRRELEVANT_LABEL 
                                   for item in self.random_sample_from_batch ] 
-            
-        new_labels_str = [f'({item.id_},{label})' for label,item in zip(self.all_labels[-self.b:], self.random_sample_from_batch)]
-        assert self.b==len(self.random_sample_from_batch)
-        logging.info(f'AFTER LOOP. NEW LABELS (#{self.b:3}). ' + ';'.join(new_labels_str))
-        logging.info(f'AFTER LOOP. PRECISION: {len([item for item in self.random_sample_from_batch if item.is_relevant()])/self.b} ')
-        logging.info(f'AFTER LOOP. NO. OF RELEVANT ARTICLES FOUND: '\
-                     f'{len([item for item in self.random_sample_from_batch if item.is_relevant()])} ')
+                  
                            
         self.labeled_collection = list(self.labeled_collection) + list(self.random_sample_from_batch)
       
@@ -495,16 +505,31 @@ class SCAL(object):
             item.assign_label(label)   
 #         print(f'cantidad de relevantes={len([item for item in self.labeled_collection if item.is_relevant()])}')     
 
-        logging.info(f'AFTER LOOP. New labeled collection {list(self.labeled_collection)} documents '\
-                      f'({SCAL._show_ids(list(self.labeled_collection))}).')  
+
                   
         self.random_unlabeled_collection = self._remove_from_unlabeled(self.sorted_docs)
-        logging.info(f'AFTER LOOP. New unlabeled collection {list(self.unlabeled_collection)} documents '\
-          f'({SCAL._show_ids(list(self.unlabeled_collection))}).') 
+ 
         self.removed.append([elem for elem in self.sorted_docs ])
-        
-        self.size_of_Uj = len([elem for elem in self.full_U if not elem in set([elem for list_ in self.removed for elem in list_])])
+                  
+                  
+                  
         r = len([item for item in self.random_sample_from_batch if item.is_relevant()])
+        new_labels_str = [f'({item.id_},{label})' for label,item in zip(self.all_labels[-self.b:], self.random_sample_from_batch)]
+        assert self.b==len(self.random_sample_from_batch)
+        logging.info(f'AFTER LOOP. NEW LABELS (#{self.b:3}).       ' + ';'.join(new_labels_str))
+        logging.info(f'AFTER LOOP. PRECISION:                      {r/self.b} ')
+        logging.info(f'AFTER LOOP. True Positives:                 {r} ')
+        logging.info(f'AFTER LOOP. False Positives:                {self.b-r} ')
+        logging.info(f'AFTER LOOP. NO. OF RELEVANT ARTICLES FOUND: {r} ')
+                
+                  
+        logging.info(f'AFTER LOOP. New labeled collection {len(self.labeled_collection)} documents '\
+                      f'({SCAL._show_ids(list(self.labeled_collection))}).')  
+                  
+        logging.info(f'AFTER LOOP. New unlabeled collection (random sample) {len(self.random_sample_from_batch)} documents '\
+          f'({SCAL._show_ids(list(self.random_sample_from_batch))}).')
+                  
+        self.size_of_Uj = len([elem for elem in self.full_U if not elem in set([elem for list_ in self.removed for elem in list_])])
         self.precision_estimates.append(r/self.b)
         self.Rhat[self.j] = (r*self.B)/self.b
         assert (r*self.B)/self.b>=r
@@ -614,7 +639,9 @@ class SCAL(object):
         
 #         print(f'proportion={self.proportion_relevance_feedback}')
         logging.debug(f'Making prediction over set of unlabeled articles ({len(final_unlabeled_collection):,}).')
-        yhat = self.models[-1].predict(final_unlabeled_collection)
+        yhat = self.models[-1].predict(final_unlabeled_collection, progress_bar=True)
+                  
+                  
         relevant = yhat>=t
         logging.info(f'Found {np.sum(relevant)} possible relevant articles.')
 #         print(f'Shape of yhat={yhat.shape}')
@@ -659,7 +686,7 @@ class SCAL(object):
                 count+=1
                 
                       
-        if send_email:
+        if not self.simulation:
             assert os.path.isfile(filename)
             temp_file ='exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
             shutil.copyfile(filename, temp_file)
