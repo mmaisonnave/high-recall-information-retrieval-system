@@ -438,6 +438,7 @@ class SCAL(object):
                       f'({SCAL._show_ids(list(extension)+list(self.labeled_collection))}).')
 
         SCAL._label_as_unknown(extension)
+        logging.debug('Looking for suggestions in random sample of unlabeled documents ...')
         self.sorted_docs = self._select_highest_scoring_docs()
         logging.debug(f'IN-LOOP. Looking for            {len(self.sorted_docs)} most relevant documents '\
                 f'({SCAL._show_ids(self.sorted_docs)})')
@@ -454,6 +455,7 @@ class SCAL(object):
                           for suggestion,confidence in zip(self.random_sample_from_batch,yhat)]
         client_current_index = len(self.all_texts)+1
         self.all_texts += text_for_label
+        logging.debug('Displaying suggestions to the user ...')
         df = pd.DataFrame(
                        {
                         'example': self.all_texts,
