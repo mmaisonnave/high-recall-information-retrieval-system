@@ -529,7 +529,10 @@ class SCAL(object):
         logging.info(f'AFTER LOOP. New unlabeled collection (random sample) {len(self.random_sample_from_batch)} documents '\
           f'({SCAL._show_ids(list(self.random_sample_from_batch))}).')
                   
-        self.size_of_Uj = len([elem for elem in self.full_U if not elem in set([elem for list_ in self.removed for elem in list_])])
+        Uj = [elem for elem in self.full_U if not elem in set([elem for list_ in self.removed for elem in list_])]
+        tj = np.min(self.models[self.j].predict([elem for elem in self.full_U if not elem in Uj]))
+        logging.info(f'Tj (current threshold)={tj}')
+        self.size_of_Uj = len(Uj)
         self.precision_estimates.append(r/self.b)
         self.Rhat[self.j] = (r*self.B)/self.b
         assert (r*self.B)/self.b>=r
@@ -556,6 +559,7 @@ class SCAL(object):
 
 
     def finish(self):
+        print('Preparing for exporting ... (this could take around 3 hours)')
         logging.debug(f'SCAL PROCESS FINISHED. Process finished. Number of labeled articles={len(self.labeled_collection)}'\
                                            f' Number of unlabeled articles in the random sample={len(self.random_unlabeled_collection)}')
                   
@@ -628,6 +632,16 @@ class SCAL(object):
 #                       f'size of Uj={len(Uj)} - '\
 #                       f'size of Uo\\Uj={len([elem for elem in self.full_U if not elem in Uj])}')
 #         print(f'threshold={t}')
+                  
+        # SAVING LABELED DATA
+        logging.debug(f'Saving {len(self.labeled_collection)} documents as labeled data in '\
+                      f'./sessions/scal/{self.session_name}/data/labeled_data'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'\
+                      ' before making final predictions')
+                  
+        with open(f'./sessions/scal/{self.session_name}/data/labeled_data'+time.strftime("%Y-%m-%d_%H-%M")+'.csv', 'w') as writer:
+                  writer.write('\n'.join([';'.join([item.id_,item.label]) for item in self.labeled_collection]))
+                  
+        # FINAL CLASSIFIER
         logging.debug('Creating final classifier ...')
         self.models.append(SCAL._build_classifier(self.labeled_collection))
 #         print(f'Rhat={self.Rhat}')
@@ -636,18 +650,7 @@ class SCAL(object):
         logging.debug(f'Removing {len(self.labeled_collection[1:])} labeled documents from full unlabeled collection.')
         final_unlabeled_collection = [item for item in self.unlabeled_collection if not item in self.labeled_collection[1:]]
 #         print(f'Size of unlabeled after removing labeled={len(final_unlabeled_collection)}')
-        
-#         print(f'proportion={self.proportion_relevance_feedback}')
-        logging.debug(f'Making prediction over set of unlabeled articles ({len(final_unlabeled_collection):,}).')
-        yhat = self.models[-1].predict(final_unlabeled_collection, progress_bar=True)
-                  
-                  
-        relevant = yhat>=t
-        logging.info(f'Found {np.sum(relevant)} possible relevant articles.')
-#         print(f'Shape of yhat={yhat.shape}')
-#         print(f'Number of relevant={np.sum(yhat>=t)}')
-        
-        
+
         logging.debug('-'*30+'FINISHING SCAL'+'-'*30)
         logging.info(f'Final   labeled size   ={len(self.labeled_collection)}')
         logging.info(f'Final unlabeled size   ={len(final_unlabeled_collection)}')
@@ -655,8 +658,21 @@ class SCAL(object):
         logging.info(f'Exp. relevant in sample={no_of_expected_relevant:,}')
         logging.info(f'j                      ={j}')
         logging.info(f'Threshold              ={t}')
+
+#         print(f'proportion={self.proportion_relevance_feedback}')
+        logging.debug(f'Making prediction over set of unlabeled articles ({len(final_unlabeled_collection):,}).')
+        yhat = self.models[-1].predict(final_unlabeled_collection, progress_bar=True)
+                  
         logging.info(f'Relevant found (total) ={len([item for item in self.labeled_collection if item.is_relevant()])+np.sum(relevant)}'\
                       f'({len([item for item in self.labeled_collection if item.is_relevant()])} labeled / {np.sum(relevant)} suggested)')
+                  
+        relevant = yhat>=t
+        logging.info(f'Found {np.sum(relevant)} possible relevant articles.')
+#         print(f'Shape of yhat={yhat.shape}')
+#         print(f'Number of relevant={np.sum(yhat>=t)}')
+        
+        
+
 
 #         print(f'Relevant count: {np.sum(relevant)}')
 #         print(f'Precision estimate: {np.average(self.precision_estimates)}')

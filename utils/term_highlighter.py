@@ -76,7 +76,7 @@ class TermHighlighter(object):
         return f'<TermHighlighter model={self.model} trained={self.trained} vocab=<{self.vocab[0]}, ..., {self.vocab[1]}>>'
     
     
-    def _optimized_logreg_prediction(self, item_list, batch_size=80530,progress_bar=False):
+    def _optimized_logreg_prediction(self, item_list, batch_size=40265,progress_bar=False):
         
         linear_model = self.model
         vecnames = [item._vector_filename() for item in item_list]
