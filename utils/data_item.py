@@ -6,10 +6,14 @@ import numpy as np
 import html
 from sklearn.preprocessing import normalize
 from scipy.sparse import lil_matrix
+from scipy import sparse
 import spacy
 import string
 
-
+def get_vocab_path():
+    return '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/data/MC_vocab.txt'
+def get_idf_path():
+    return '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/data/MC_idf.txt'
 
     
 class DataItem(object):
@@ -182,7 +186,8 @@ class DataItem(object):
                 x = normalize([x])[0,:]
                 return x
             elif type(data)==dict:
-                return data['BoW'].toarray()[0,:]
+#                 return data['BoW'].toarray()[0,:]
+                return data['BoW']
         else:
             return self._preloaded_vector[type_]
     
@@ -194,13 +199,14 @@ class DataItem(object):
         if type_==DataItem.TYPE_HGGFC:
             return get_texts(item_list)
         else:
-            X = np.zeros(shape=(len(item_list),item_list[0].vector(type_=type_).shape[0]),dtype='float32')
+            X = sparse.vstack([item.vector() for item in item_list])
+#             X = np.zeros(shape=(len(item_list),item_list[0].vector(type_=type_).shape[0]),dtype='float32')
 
-            for idx,item in enumerate(item_list):
-                X[idx,:] = item.vector(type_=type_)
+#             for idx,item in enumerate(item_list):
+#                 X[idx,:] = item.vector(type_=type_)
 
-            if type_==DataItem.TYPE_BOW:
-                X = lil_matrix(X)
+#             if type_==DataItem.TYPE_BOW:
+#                 X = lil_matrix(X)
             return X
     
     def get_texts(item_list):
@@ -273,18 +279,20 @@ class DataItem(object):
         assert self.valid_confidence()
         return self.confidence
     
-    
+from utils.tokenizer import Tokenizer    
 from scipy import sparse
 
 class QueryDataItem(object):
 #     vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/vocab_with_dp.txt'
 #     vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/precomputed/vocab.txt'
-    vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/data/vocab.txt'
-    idf_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/data/idf.txt'
-    idf = np.array([float(value) for value in open(idf_path, 'r').read().splitlines()])
-    vocab =  open(vocab_path, 'r').read().splitlines()
+#     vocab_path = 
+#     idf_path = 
+    idf = np.array([float(value) for value in open(get_idf_path(), 'r').read().splitlines()])
+    vocab =  open(get_vocab_path(), 'r').read().splitlines()
     word2index = dict([(word,idx) for idx,word in enumerate(vocab)]) # dict([(linea.split(',')[1], int(linea.split(',')[0])) for linea in])
-    nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
+#     nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
+    tokenizer = Tokenizer()
+    
     def __init__(self, str_):
         self.text=str_
         self.label=DataItem.UNK_LABEL
@@ -297,25 +305,33 @@ class QueryDataItem(object):
         item.label = dict_['label']
         return item
     
-    def _remove_punctuation(word):
-        return ''.join([char for char in word if not char in string.punctuation+' '])
+#     def _remove_punctuation(word):
+#         return ''.join([char for char in word if not char in string.punctuation+' '])
 
-    def _tokenize(str_):
-        tokens = [word.lemma_.lower() for word in QueryDataItem.nlp(str_) if not word.is_stop and word.lemma_.isalnum()]
-        tokens = [word.replace('\n', '') for word in tokens if not word.isnumeric()\
-                  and len(QueryDataItem._remove_punctuation(word.replace('\n', '')))!=0]
-        return tokens
+#     def _tokenize(str_):
+#         tokens = [word.lemma_.lower() for word in QueryDataItem.nlp(str_) if not word.is_stop and word.lemma_.isalnum()]
+#         tokens = [word.replace('\n', '') for word in tokens if not word.isnumeric()\
+#                   and len(QueryDataItem._remove_punctuation(word.replace('\n', '')))!=0]
+#         return tokens
     def vector(self, type_=DataItem.TYPE_BOW):
         assert type_==DataItem.TYPE_BOW, 'not implemented for other types'
         vector = np.zeros(shape=(QueryDataItem.get_vec_size(type_=type_),))
         
-        for token in QueryDataItem._tokenize(self.text):
+        token_list = QueryDataItem.tokenizer.tokenize(self.text)
+        ngram_list = list(token_list)
+        ngram_list += [' '.join(ngram) for ngram in Tokenizer.ngrams(ngram_list)]
+        ngram_list = filter(lambda ngram: ngram in QueryDataItem.word2index , ngram_list)
+        
+        for token in ngram_list:
             if token in QueryDataItem.word2index:
                 vector[QueryDataItem.word2index[token]]+=1
          
 
         vector = vector * QueryDataItem.idf
-        return normalize([vector,])[0,:]
+#         return normalize([vector,])[0,:]
+    
+        vector = normalize([vector,])[0,:]
+        return lil_matrix(vector.reshape(1,-1))
     
     def has_vector(self):
         return True
@@ -340,10 +356,84 @@ class QueryDataItem(object):
         else:
             self.set_irrelevant()
             
+#     def _dict(self):
+#         return {'text': self.text, 'label':self.label}
+#     def from_dict(dict_):
+#         item = QueryDataItem(dict_['text'])        
+#         item.label = dict_['label']
+#         return item
+    
     def get_htmldocview(self):
         return  '<html><hr style=\"border-color:black\">'\
                 '<hr>'\
                 '{}<hr style=\"border-color:black\"></html>'.format(str(self.text))
+    
+    
+class GenericSyntheticDocument:
+    def __init__(self, str_, vocab_path=None, idf_path=None):
+        self.text=str_
+        self.label=DataItem.UNK_LABEL
+        self.id_='synthetic'
+        
+        if not idf_path is None:
+            self.idf = np.array([float(value) for value in open(idf_path, 'r').read().splitlines()])
+        if not vocab_path is None:
+            vocab =  open(vocab_path, 'r').read().splitlines()
+            self.word2index = dict([(word,idx) for idx,word in enumerate(vocab)]) 
+        self.tokenizer = Tokenizer()
+        
+    def vector(self):
+        vector = np.zeros(shape=(self.get_vec_size(),))
+        
+        token_list = self.tokenizer.tokenize(self.text)
+        ngram_list = list(token_list)
+        ngram_list += [' '.join(ngram) for ngram in Tokenizer.ngrams(ngram_list)]
+        ngram_list = filter(lambda ngram: ngram in self.word2index , ngram_list)
+        
+        for token in ngram_list:
+            if token in self.word2index:
+                vector[self.word2index[token]]+=1
+         
+
+        vector = vector * self.idf
+        vector = normalize([vector,])[0,:]
+        return lil_matrix(vector.reshape(1,-1))
+    
+    
+    def assign_label(self,label):
+        assert label==DataItem.REL_LABEL or label==DataItem.IREL_LABEL
+        if label==DataItem.REL_LABEL:
+            self.set_relevant()
+        else:
+            self.set_irrelevant()
+            
+            
+    def is_relevant(self):
+        return self.label==DataItem.REL_LABEL
+    
+    def _dict(self):
+        return {'text': self.text, 'label':self.label, 'word2index':self.word2index, 'idf':list(self.idf)}
+    def from_dict(dict_):
+        item = QueryDataItem(dict_['text'])        
+        item.label = dict_['label']
+        item.word2index =  dict_['word2index']
+        item.tokenizer = Tokenizer()
+        item.idf = np.array(dict_['idf'])
+        return item
+    
+    def set_relevant(self):
+        self.label = DataItem.REL_LABEL
+        
+    def has_vector(self):
+        return True
+    def get_htmldocview(self):
+        return  '<html><hr style=\"border-color:black\">'\
+                '<hr>'\
+                '{}<hr style=\"border-color:black\"></html>'.format(str(self.text))
+    
+    
+    def get_vec_size(self):
+        return len(self.word2index)
 ##########################################################################################
 #                                         TESTER                                         #
 ##########################################################################################

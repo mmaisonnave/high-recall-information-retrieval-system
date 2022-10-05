@@ -8,6 +8,7 @@ import pickle
 import joblib
 import json
 from utils.data_item import QueryDataItem
+from utils.data_item import get_vocab_path
 import os
 
 from tqdm import tqdm
@@ -16,6 +17,8 @@ import pandas as pd
 from sklearn.base import clone
 
 from utils.tokenizer import Tokenizer
+
+import re
 
 class TermHighlighter(object):
     def __init__(self, terms_per_article=10, keep_top=10000,):
@@ -27,7 +30,7 @@ class TermHighlighter(object):
         self.rng = np.random.default_rng(2022)
         self.nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
 
-        self.vocab=np.array(open(QueryDataItem.vocab_path, 'r').read().splitlines())
+        self.vocab=np.array(open(get_vocab_path(), 'r').read().splitlines())
         self.tokenizer = Tokenizer()
     
     def to_disk(self, filename):
@@ -52,12 +55,20 @@ class TermHighlighter(object):
         term_highlighter.model = joblib.load(f'{filename}.joblib')
         return term_highlighter
     
-    def fit(self, item_list):
+    def fit(self, item_list, item_representation=None):
         assert all([item.label!=DataItem.UNK_LABEL for item in item_list])
         
-        X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
+        if item_representation is None:
+            X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
+        else:
+            vec_size = item_representation[item_list[0].id_].shape[1]
+            X = sparse.vstack([item_representation[item.id_] for item in item_list])
+            
         y = DataItem.get_y(item_list)
-#         self.mean_value_feature = np.average(X,axis=0)
+        
+  
+        
+  
         self.compute_mean_value_feature(item_list=None, X=X)
         self.model.fit(X,y)
         
@@ -76,7 +87,7 @@ class TermHighlighter(object):
         return f'<TermHighlighter model={self.model} trained={self.trained} vocab=<{self.vocab[0]}, ..., {self.vocab[1]}>>'
     
     
-    def _optimized_logreg_prediction(self, item_list, batch_size=40265,progress_bar=False):
+    def _optimized_logreg_prediction(self, item_list, batch_size=40265,progress_bar=False, item_representation=None):
         
         linear_model = self.model
         vecnames = [item._vector_filename() for item in item_list]
@@ -88,13 +99,19 @@ class TermHighlighter(object):
             iterable=tqdm(iterable)
         for ini in iterable:
             fin = min(ini+batch_size, len(vecnames))
-            X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))['BoW'], vecnames[ini:fin])),axis=1)
-            X[:,:-2]=0
+            if item_representation is None:
+                X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))['BoW'], vecnames[ini:fin])),axis=1)
+            else:
+                vec_size = item_representation[item_list[0].id_].shape[1]
+                ids = [re.findall('[0-9]{10}',vecname)[0] for vecname in vecnames[ini:fin]]
+                X = sparse.vstack([item_representation[id_] for id_ in ids])
+
+#             X[:,:-2]=0
             yhats.append(linear_model.predict_proba(X)[:,1])
         return np.hstack(yhats)
     
-    def predict(self,item_list, progress_bar=False):
-        return self._optimized_logreg_prediction(item_list,progress_bar=progress_bar)
+    def predict(self,item_list, progress_bar=False, item_representation=None):
+        return self._optimized_logreg_prediction(item_list,progress_bar=progress_bar,item_representation=item_representation)
     
     def predict_old(self,item_list):
         assert self.trained
@@ -115,10 +132,13 @@ class TermHighlighter(object):
             return yhat
 #         return self.model.predict_proba(X)[:,1]
     
-    def highlight_coefficients(self,data_item):
-        vec = data_item.vector(type_=DataItem.TYPE_BOW)
+    def highlight_coefficients(self, data_item):
+        vec = data_item.vector(type_=DataItem.TYPE_BOW).toarray()[0,:]
         coefs = self.model.coef_[0,:]
         mean_values = self.mean_value_feature
+        print(f'coefs.shape=      {coefs.shape}  ({type(coefs)})')
+        print(f'vec.shape=        {vec.shape}    ({type(vec)})')
+        print(f'mean_values.shape={mean_values.shape} ({type(mean_values)})')
         result = coefs*(vec - mean_values)
         assert result.shape==(10000,)
         return result
