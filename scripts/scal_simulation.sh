@@ -36,17 +36,16 @@ SCRIPT=scal_simulation.py
 
 # for RF in uncertainty relevance 
 SCRIPT=scal_simulation.py
-# for RF in 1quarter_relevance_3quarters_uncertainty 3quarter_relevance_1quarters_uncertainty
-for RF in  random
+for RF in uncertainty 1quarter_relevance_3quarters_uncertainty 3quarter_relevance_1quarters_uncertainty
+# for RF in  uncertainty 
 do
-#     for N in 50 100 250 500 1000 2000 3000 4500 6000
-    for N in 6000
+    for N in 50 100 250 500 1000 2000 3000 4500 6000
     do
-        for I in {1..2}
+        for I in {1..10}
         do
             RANDOM_NUMBER=$RANDOM
-            echo python $SCRIPT --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER --proportion-relevance=$PROPORTION --ranking-function=$RF
-            python $SCRIPT --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER --proportion-relevance=$PROPORTION --ranking-function=$RF
+            echo python $SCRIPT --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER --proportion-relevance=$PROPORTION --ranking-function=$RF --glove
+            python $SCRIPT --N=$N --target-recall=$TARGET_RECALL --seed=$RANDOM_NUMBER --proportion-relevance=$PROPORTION --ranking-function=$RF --glove
         done
     done
 done

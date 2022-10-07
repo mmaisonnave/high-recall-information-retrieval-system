@@ -5,6 +5,8 @@ from utils.scal import SCAL
 from utils.oracle import Oracle
 from utils.data_item import QueryDataItem, GenericSyntheticDocument
 
+import spacy
+nlp = spacy.load('en_core_web_lg')
 import re 
 
 if __name__=='__main__':
@@ -30,7 +32,10 @@ if __name__=='__main__':
         print('Please provide ranking function (python script.py --ranking-function=relevance_with_avg_diversity).')
         sys.exit(1)
 
-
+    glove=False
+    if re.search('--glove', input_):
+        glove=True
+        
     relevance_function = re.findall('.*--ranking-function=([0-9a-z\_]*).*', input_)[0]
     N = int(re.findall('.*--N=([0-9][0-9]*).*', input_)[0])
     target_recall=float(re.findall('.*--target-recall=([0-9\.][0-9\.]*).*', input_)[0])
@@ -39,13 +44,18 @@ if __name__=='__main__':
 #     diversity = not re.search('.*--diversity', input_) is None
 #     average_diversity = not re.search('.*--average-diversity', input_) is None
     session_name=f'simulation_tr_{int(target_recall*100)}_N_{N}_proportion_{int(proportion_relevance*100)}_{relevance_function}_seed_{seed}'
+    if glove:
+        session_name=session_name+'_glove'
 #     if diversity:
 #         session_name = session_name + '_diversity'
 #     if average_diversity:
 #         session_name = session_name + '_avg'
 
     unlabeled = Oracle.get_collection()
-    representations = Oracle.get_document_representation()
+    if glove:
+        representations = Oracle.get_document_representation(type_='GloVe')
+    else:
+        representations = Oracle.get_document_representation(type_='BoW')
 
     print(f'starting session_name: {session_name}')
     doc = GenericSyntheticDocument('dp',
@@ -56,7 +66,10 @@ if __name__=='__main__':
                                   )
     doc.set_relevant()
 
-    representations[doc.id_] = doc.vector()
+    if glove:
+        representations[doc.id_] = nlp('dp').vector
+    else:
+        representations[doc.id_] = doc.vector()
     
     
     assert len(unlabeled)+len([doc])==len(representations)

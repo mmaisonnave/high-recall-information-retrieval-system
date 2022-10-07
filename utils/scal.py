@@ -344,8 +344,12 @@ class SCAL(object):
         assert aggregation=='average' or aggregation=='min', 'Please specify a valid aggregation function (average or min).'
         item_list = self.random_unlabeled_collection
         if not self.item_representation is None:
-            m1 = sparse.vstack([self.item_representation[item.id_] for item in item_list])
-            m2 = sparse.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
+            if type(self.item_representation[list(self.item_representation)[0]])==np.ndarray:
+                m1 = np.vstack([self.item_representation[item.id_] for item in item_list])
+                m2 = np.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
+            else:
+                m1 = sparse.vstack([self.item_representation[item.id_] for item in item_list])
+                m2 = sparse.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
         else:
             m1 = DataItem.get_X(item_list)
             m2 = DataItem.get_X(self.labeled_collection)
