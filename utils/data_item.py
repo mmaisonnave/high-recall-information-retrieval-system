@@ -72,7 +72,9 @@ class DataItem(object):
 #             self.source = source
             self.label = DataItem.UNK_LABEL            
             assert os.path.isfile(self.filename())
-            
+      
+    def is_synthetic(self):
+        return False
     def preload_vector(self, type_=TYPE_BOW):
         if type_ not in self._preloaded_vector:
             self._preloaded_vector[type_] = self.vector(type_=type_)
@@ -304,7 +306,8 @@ class QueryDataItem(object):
         item = QueryDataItem(dict_['text'])        
         item.label = dict_['label']
         return item
-    
+    def is_synthetic(self):
+        return True
 #     def _remove_punctuation(word):
 #         return ''.join([char for char in word if not char in string.punctuation+' '])
 
@@ -382,6 +385,8 @@ class GenericSyntheticDocument:
             self.word2index = dict([(word,idx) for idx,word in enumerate(vocab)]) 
         self.tokenizer = Tokenizer()
         
+    def is_synthetic(self):
+        return True
     def vector(self):
         vector = np.zeros(shape=(self.get_vec_size(),))
         

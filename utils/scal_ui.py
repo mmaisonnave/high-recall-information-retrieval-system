@@ -5,14 +5,28 @@ from IPython.display import display, clear_output
 
 # def session_name_ui(callback_fn):
 class SCAL_UI(object):
-    def __init__(self, callback_fn):
+    def __init__(self, callback_fn, second_round=False):
+        ensure_option=False
+        options = os.listdir('sessions/scal/')
+        options = [option for option in options if not option.endswith('_second_round')]
+        if second_round:
+            def finished_session(session):
+                if not os.path.exists(f'sessions/scal/{session}/data'):
+                    return False
+                datafiles=os.listdir(f'sessions/scal/{session}/data')
+                exported= any([datafile.startswith('exported_data') for datafile in datafiles])
+                labeled= any([datafile.startswith('labeled_data') for datafile in datafiles])
+                return exported and labeled
+            options = list(filter(finished_session, options))
+            ensure_option=True
         self.session_name_widget = widgets.Combobox(placeholder='Select a saved session or enter new session name',
-                                                  options=os.listdir('sessions/scal/'),
+                                                  options=options,
                                                   description='Session name:',
-                                                  ensure_option=False,
+                                                  ensure_option=ensure_option,
                                                    layout=widgets.Layout(width='425px'),
                                                   style={'description_width': 'initial'},
                                                   disabled=False)
+
 
         self.topic_description_widget = widgets.Combobox(placeholder='',
                                                     options=[word for word in QueryDataItem.word2index],

@@ -25,7 +25,7 @@ class TermHighlighter(object):
         self.keep_top = keep_top
         self.terms_per_article=terms_per_article
         
-        self.model = LogisticRegression(C=1, random_state=np.random.RandomState(42))
+        self.model = LogisticRegression(C=1, random_state=np.random.RandomState(42),max_iter=1000)
         self.trained = False
         self.rng = np.random.default_rng(2022)
         self.nlp = spacy.load('en_core_web_sm', disable=['textcat', 'parser','ner'])
@@ -61,8 +61,12 @@ class TermHighlighter(object):
         if item_representation is None:
             X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
         else:
-            vec_size = item_representation[item_list[0].id_].shape[1]
-            X = sparse.vstack([item_representation[item.id_] for item in item_list])
+            vec = item_representation[item_list[0].id_]
+            if type(vec)==np.ndarray:
+                X = np.vstack([item_representation[item.id_] for item in item_list])
+#                 print(f'DEBUG:: X.shape={X.shape}')
+            else:
+                X = sparse.vstack([item_representation[item.id_] for item in item_list])
             
         y = DataItem.get_y(item_list)
         
@@ -81,7 +85,11 @@ class TermHighlighter(object):
         if X is None:
             assert not item_list is None
             X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
-        self.mean_value_feature =np.average(X.toarray(),axis=0)
+        if type(X)==np.ndarray:
+            self.mean_value_feature =np.average(X,axis=0)
+#             print(f'DEBUG:: self.mean_value_feature.shape={self.mean_value_feature.shape}')
+        else:
+            self.mean_value_feature =np.average(X.toarray(),axis=0)
         
     def __str__(self):
         return f'<TermHighlighter model={self.model} trained={self.trained} vocab=<{self.vocab[0]}, ..., {self.vocab[1]}>>'
@@ -102,9 +110,13 @@ class TermHighlighter(object):
             if item_representation is None:
                 X = normalize(sparse.vstack(map(lambda filename: pickle.load(open(filename, 'rb'))['BoW'], vecnames[ini:fin])),axis=1)
             else:
-                vec_size = item_representation[item_list[0].id_].shape[1]
+                vec = item_representation[item_list[0].id_]
                 ids = [re.findall('[0-9]{10}',vecname)[0] for vecname in vecnames[ini:fin]]
-                X = sparse.vstack([item_representation[id_] for id_ in ids])
+                if type(vec)==np.ndarray:
+                    X = np.vstack([item_representation[id_] for id_ in ids])
+#                     print(f'DEBUG:: X.shape={X.shape}')
+                else:
+                    X = sparse.vstack([item_representation[id_] for id_ in ids])
 
 #             X[:,:-2]=0
             yhats.append(linear_model.predict_proba(X)[:,1])
@@ -136,9 +148,9 @@ class TermHighlighter(object):
         vec = data_item.vector(type_=DataItem.TYPE_BOW).toarray()[0,:]
         coefs = self.model.coef_[0,:]
         mean_values = self.mean_value_feature
-        print(f'coefs.shape=      {coefs.shape}  ({type(coefs)})')
-        print(f'vec.shape=        {vec.shape}    ({type(vec)})')
-        print(f'mean_values.shape={mean_values.shape} ({type(mean_values)})')
+#         print(f'coefs.shape=      {coefs.shape}  ({type(coefs)})')
+#         print(f'vec.shape=        {vec.shape}    ({type(vec)})')
+#         print(f'mean_values.shape={mean_values.shape} ({type(mean_values)})')
         result = coefs*(vec - mean_values)
         assert result.shape==(10000,)
         return result
