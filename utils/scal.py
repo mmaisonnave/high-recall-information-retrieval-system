@@ -16,12 +16,16 @@ import os
 import logging
 from sklearn.metrics import pairwise_distances
 from bs4 import BeautifulSoup
+import pickle
+
+from scipy import sparse
 
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, confusion_matrix
 
 class SCAL(object):    
     RELEVANT_LABEL='Relevant'
     IRRELEVANT_LABEL='Irrelevant'
+    HOME_FOLDER=f'sessions/scal/'
     
     def __init__(self,
                  session_name=None,
@@ -34,24 +38,32 @@ class SCAL(object):
                  empty=False,
 #                  proportion_relevance_feedback=1.0,
                  ranking_function='relevance',
+                 item_representation=None,
 #                  diversity=False,
 #                  average_diversity=False,
                  seed=2022
                 ):
         if not empty:
+            assert not session_name is None , 'If not loading session from disk (not empty SCAL) then a session name is required.'
+            self.home_folder = SCAL.HOME_FOLDER
+            if simulation:
+                self.home_folder = os.path.join(self.home_folder,'simulations/')
+            self.home_folder = os.path.join(self.home_folder, session_name)
+            
+            
             self.initial_label_size=len(labeled_collection)
             
             # CREATE LOG AND SESSION FOLDER
             log_folder_created=False
             session_folder_created=False
-            if not os.path.exists(f'sessions/scal/{session_name}/log/'):
+            if not os.path.exists(os.path.join(self.home_folder,'log/')):
                 log_folder_created=True
-                if not os.path.exists(f'sessions/simulations/scal/{session_name}/'):
+                if not os.path.exists(self.home_folder):
                     session_folder_created=True
-                    os.mkdir(f'sessions/scal/{session_name}/')
-                os.mkdir(f'sessions/scal/{session_name}/log/')
+                    os.mkdir(self.home_folder)
+                os.mkdir(os.path.join(self.home_folder,'log/'))
                 
-            logging.basicConfig(filename=f'sessions/scal/{session_name}/log/scal_system.log', 
+            logging.basicConfig(filename=os.path.join(self.home_folder, 'log/scal_system.log'), 
                                 format='%(asctime)s [%(levelname)s] %(message)s' ,
     #                             encoding='utf-8',                # INVALID WHEN CHANGE ENV (IMM -> BERT)
                                 datefmt='%Y-%m-%d %H:%M:%S',
@@ -62,9 +74,9 @@ class SCAL(object):
             logging.debug('-'*30+'STARTING SCAL'+'-'*30)
             logging.debug('Creating new session from scratch (Creating non-empty instance to start SCAL process, NOT loading from disk).')
             if session_folder_created:
-                logging.debug(f'Creating session folder: ./sessions/scal/{session_name}/')
+                logging.debug(f'Creating session folder: {self.home_folder}')
             if log_folder_created:
-                logging.debug(f'Creating log     folder: ./sessions/scal/{session_name}/log/')
+                logging.debug(f'Creating log     folder: '+os.path.join(self.home_folder,'log/'))
                 
         
 #             self.using_relevance_feedback=True
@@ -81,6 +93,12 @@ class SCAL(object):
             logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t batch_size_cap=               {batch_size_cap}')
             logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t ranking_function=             {ranking_function}')
 #             logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t Using relevance feedback=     {self.using_relevance_feedback}')
+            if not item_representation is None:
+                logging.debug(f'SCAL INITIAL CONFIGURATION.\t\t Doc representation received=  {len(item_representation)} vectors')
+                
+            self.item_representation=item_representation
+
+
             self.simulation=simulation
 #             self.diversity=diversity
 #             self.average_diversity=average_diversity
@@ -97,8 +115,7 @@ class SCAL(object):
             self.random_unlabeled_collection = self.ran.choice(unlabeled_collection, 
                                                           size=min(self.random_sample_size,len(unlabeled_collection)), 
                                                           replace=False)
-
-            
+            assert all([item.is_unknown() for item in unlabeled_collection])
             
             self.full_U = self.random_unlabeled_collection
             self.cant_iterations = SCAL._cant_iterations(len(self.random_unlabeled_collection))
@@ -150,26 +167,55 @@ class SCAL(object):
                          'all-labels': self.all_labels,
                         }
 
-        if not os.path.exists(f'sessions/scal/{self.session_name}/data/'):
+        ####################
+        # CREATING FOLDERS #
+        ####################
+        if not os.path.exists(os.path.join(self.home_folder, 'data/')):
             
 #             (f'sessions/scal/{self.session_name}')
-            os.mkdir(f'sessions/scal/{self.session_name}/data')
+            os.mkdir(os.path.join(self.home_folder, 'data/'))
 #             if not os.path.exists(f'sessions/scal/{session_name}/log/'):
 #                 os.mkdir(f'sessions/scal/{self.session_name}/log')
-            os.mkdir(f'sessions/scal/{self.session_name}/models')
-            logging.debug(f'Creating data   folder: ./sessions/scal/{self.session_name}/data')
-            logging.debug(f'Creating models folder: ./sessions/scal/{self.session_name}/models')
+            os.mkdir(os.path.join(self.home_folder, 'models/'))
+            logging.debug(f'Creating data   folder: '+os.path.join(self.home_folder, 'data/'))
+            logging.debug(f'Creating models folder: '+os.path.join(self.home_folder, 'models/'))
             
+            
+        ####################
+        #  SAVING MODELS   #
+        ####################
         for idx,model in enumerate(self.models):
-            model.to_disk(f'sessions/scal/{self.session_name}/models/model_{idx}')
-        logging.debug(f'Saving {len(self.models)} models into model folder (sessions/scal/{self.session_name}/models/).')
-        with open(f'sessions/scal/{self.session_name}/data/configuration.json','w') as outputfile:
-            outputfile.write(json.dumps(configuration, indent=4))
-        logging.debug(f'Saving configuration file into data folder         (sessions/scal/{self.session_name}/data/).') 
-                
+            model.to_disk(os.path.join(self.home_folder,f'models/model_{idx}'))
+        logging.debug(f'Saving {len(self.models)} models into model folder '+os.path.join(self.home_folder, 'models/'))
         
-    def from_disk(session_name):
-        logging.basicConfig(filename=f'sessions/scal/{session_name}/log/scal_system.log', 
+        
+        
+        ####################
+        #  SAVING CONFIG   #
+        ####################
+        with open(os.path.join(self.home_folder,'data/configuration.json'),'w') as outputfile:
+            outputfile.write(json.dumps(configuration, indent=4))
+        logging.debug(f'Saving configuration file into data folder         '+os.path.join(self.home_folder, 'data/')) 
+                
+        ######################
+        #  SAVING DOC REPR   #
+        ######################  
+        if not self.item_representation is None:
+            pickle.dump(self.item_representation, open(os.path.join(self.home_folder,'data/item_representation.pickle'), 'wb'))
+            logging.debug(f'Saving item_representation file into data folder   '+os.path.join(self.home_folder,'data/item_representation.pickle')) 
+            
+            
+    def from_disk(session_name):        
+        home_folder = SCAL.HOME_FOLDER
+        if not os.path.exists(os.path.join(home_folder,session_name)):
+            # IF session does not exist, look into simulation sessions.
+            home_folder = os.path.join(home_folder,'simulations/')
+            assert os.path.exists(os.path.join(home_folder,f'simulations/{session_name}')), 'Session not found '\
+                                                                                            '(not in regular or simulated sessions).'
+
+        home_folder = os.path.join(home_folder, session_name)
+        
+        logging.basicConfig(filename=os.path.join(home_folder, f'log/scal_system.log'), 
                             format='%(asctime)s [%(levelname)s] %(message)s' ,
 #                             encoding='utf-8',                # INVALID WHEN CHANGE ENV (IMM -> BERT)
                             datefmt='%Y-%m-%d %H:%M:%S',
@@ -177,11 +223,20 @@ class SCAL(object):
                             level=logging.DEBUG)
         logging.debug('-'*30+'LOADING  SCAL'+'-'*30)
         
-        with open(f'sessions/scal/{session_name}/data/configuration.json', 'r') as f:
+        if 'scal/simulations' in home_folder:
+            logging.debug('Session retrieved from SIMULATIONS folder')
+        else:
+            logging.debug('Session retrieved from regular session folder')
+            
+        ##############################
+        # READING CONFIGURATION FILE #
+        ##############################
+        with open(os.path.join(home_folder,f'data/configuration.json'), 'r') as f:
             configuration = json.load(f)
             
-        logging.debug(f'Loading SCAL system configuration file (./sessions/scal/{session_name}/data/configuration.json).')
+        logging.debug(f'Loading SCAL system configuration file '+os.path.join(home_folder,f'data/configuration.json'))
         scal = SCAL(empty=True)
+        scal.home_folder = home_folder
         
         scal.session_name=configuration['session-name'] #session_name
         
@@ -232,14 +287,21 @@ class SCAL(object):
         
         # MODELS
         scal.models=[]
-        for idx,model in enumerate([file for file in os.listdir(f'sessions/scal/{session_name}/models/') if 'model_' in file and file.endswith('json')]):
-            scal.models.append(TermHighlighter.from_disk(f'sessions/scal/{session_name}/models/{model[:-5]}'))
-        logging.debug(f'Loading {len(scal.models)} models from disk (./sessions/scal/{session_name}/models/).')
+        for idx,model in enumerate([file for file in os.listdir(os.path.join(self.home_folder,'models/')) if 'model_' in file and file.endswith('json')]):
+            scal.models.append(TermHighlighter.from_disk(os.path.join(self.home_folder,f'models/{model[:-5]}')))
+#                 f'sessions/scal/{session_name}/models/'))
+        logging.debug(f'Loading {len(scal.models)} models from disk ('+os.path.join(self.home_folder,f'models/{model[:-5]}')+')')
         
         scal.all_texts = configuration['all-texts']
         scal.all_labels = configuration['all-labels']
 
-        
+        #######################
+        #  LOADING DOC REPR   #
+        #######################    
+        scal.item_representation=None
+        if os.path.exists(os.path.join(scal.home_folder,'data/item_representation.pickle')):
+            self.item_representation = pickle.load(open(os.path.join(self.home_folder,'data/item_representation.pickle'), 'rb'))
+            logging.debug(f'Loading item_representation file into data folder   '+os.path.join(self.home_folder,'data/item_representation.pickle')) 
         
         
         return scal
@@ -279,7 +341,7 @@ class SCAL(object):
             print('SCAL PROCESS FINISHED. Nothing to do skipping. ')
         
     def _extend_with_random_documents(self):    
-        assert all([item.is_unknown() for item in self.random_unlabeled_collection])
+        assert all([item.is_unknown() for item in self.random_unlabeled_collection]), f'len(random_unlabeled_collection)={len(self.random_unlabeled_collection)}'
         extension = self.ran.choice(self.random_unlabeled_collection, size=min(100,len(self.random_unlabeled_collection)), replace=False)
         list(map(lambda x: x.set_irrelevant(), extension))
         assert all([item.is_irrelevant() for item in extension])
@@ -288,18 +350,14 @@ class SCAL(object):
     def _label_as_unknown(collection):
         list(map(lambda x: x.set_unknown(), collection))
         
-    def _build_classifier(training_collection):
+    def _build_classifier(self, training_collection):
         model = TermHighlighter()
-        model.fit(training_collection)
+        model.fit(training_collection, item_representation=self.item_representation)
         return model
     
     def _smallest_distance_to_labeled_collection(self, aggregation ):
         assert aggregation=='average' or aggregation=='min', 'Please specify a valid aggregation function (average or min).'
         item_list = self.random_unlabeled_collection
-<<<<<<< HEAD
-        m1 = DataItem.get_X(item_list)
-        m2 = DataItem.get_X(self.labeled_collection)
-=======
         if not self.item_representation is None:
             if type(self.item_representation[list(self.item_representation)[0]])==np.ndarray:
                 m1 = np.vstack([self.item_representation[item.id_] for item in item_list])
@@ -308,9 +366,11 @@ class SCAL(object):
                 m1 = sparse.vstack([self.item_representation[item.id_] for item in item_list])
                 m2 = sparse.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
         else:
+
             m1 = DataItem.get_X(item_list)
             m2 = DataItem.get_X(self.labeled_collection)
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
+        
+        
         distances = pairwise_distances(m1,m2)
         if aggregation=='average':
             mindist = np.average(distances,axis=1)
@@ -326,37 +386,77 @@ class SCAL(object):
         
     def _select_highest_scoring_docs(self, function):
         """
-            valid functions: "relevance" "uncertanty" "relevance" "relevance"
+            valid functions: "relevance" "uncertanty" "avg_distance" "min_distance"
         """
         # RELEVANCE 
         if function=='relevance':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection)
+            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
             args = np.argsort(yhat)[::-1]
+            
+            
         elif function=='relevance_with_avg_diversity':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection)
+            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
             mindist = self._smallest_distance_to_labeled_collection(aggregation='average')
             haverage = 2*((mindist*yhat)/(mindist+yhat))
             assert mindist.shape==yhat.shape, f'{mindist.shape}!={yhat.shape}'
             args = np.argsort(haverage)[::-1]
         elif function=='relevance_with_min_diversity':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection)
+            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
             mindist = self._smallest_distance_to_labeled_collection(aggregation='min')
             haverage = 2*((mindist*yhat)/(mindist+yhat))
             assert mindist.shape==yhat.shape, f'{mindist.shape}!={yhat.shape}'
             args = np.argsort(haverage)[::-1]
+            
+        elif function=='half_relevance_half_uncertainty':
+            current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
+            if current_proportion<0.5:
+                yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(yhat)[::-1]
+            else:
+                yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(np.abs(yhat-0.5))
+                
+        elif function=='1quarter_relevance_3quarters_uncertainty':
+            current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
+            if current_proportion<0.25:
+                yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(yhat)[::-1]
+            else:
+                yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(np.abs(yhat-0.5))
+                
+        elif function=='random':
+            args = list(range(len(self.random_unlabeled_collection)))
+            np.random.shuffle(args)
+                        
+        elif function=='3quarter_relevance_1quarters_uncertainty':
+            current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
+            if current_proportion<0.75:
+                yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(yhat)[::-1]
+            else:
+                yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(np.abs(yhat-0.5))
+            
+        elif function=='avg_distance':
+            mindist = self._smallest_distance_to_labeled_collection(aggregation='average')
+            args = np.argsort(mindist)[::-1]
+        elif function=='min_distance':
+            mindist = self._smallest_distance_to_labeled_collection(aggregation='min')
+            args = np.argsort(mindist)[::-1]
         
         # UNCERTAINTY
         elif function=='uncertainty':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection)
+            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
             args = np.argsort(np.abs(yhat-0.5))
         elif function=='uncertainty_with_avg_diversity':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection)
+            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
             auxiliar = 1/(1+np.abs(yhat-0.5))  # Higher when most uncertainty   [0.66, 0.67, ..., 0.98, ..., 0.67, 0.66]
             mindist = self._smallest_distance_to_labeled_collection(aggregation='average')
             haverage = 2*((mindist*auxiliar)/(mindist+auxiliar))
             args = np.argsort(haverage)[::-1]
         elif function=='uncertainty_with_min_diversity':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection)
+            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
             auxiliar = 1/(1+np.abs(yhat-0.5))  # Higher when most uncertainty   [0.66, 0.67, ..., 0.98, ..., 0.67, 0.66]
             mindist = self._smallest_distance_to_labeled_collection(aggregation='min')
             haverage = 2*((mindist*auxiliar)/(mindist+auxiliar))
@@ -505,7 +605,7 @@ class SCAL(object):
         
 
         # new model created, 
-        self.models.append(SCAL._build_classifier(list(extension)+list(self.labeled_collection)))
+        self.models.append(self._build_classifier(list(extension)+list(self.labeled_collection)))
         logging.debug(f'IN-LOOP. New model trained with {len(list(extension)+list(self.labeled_collection))} documents '\
                       f'({SCAL._show_ids(list(extension)+list(self.labeled_collection))}).')
 
@@ -520,11 +620,16 @@ class SCAL(object):
         logging.debug(f'IN-LOOP. Random sample          {len(self.random_sample_from_batch)} documents from suggested relevant '\
                 f'({SCAL._show_ids(self.random_sample_from_batch)})')
                   
-        logging.debug('Computing scores to be used as highlighting ...')
-        yhat = self.models[-1].predict(self.random_sample_from_batch)
+        logging.debug('Computing scores to be used as highlighting ...')   
+        yhat = self.models[-1].predict(self.random_sample_from_batch, item_representation=self.item_representation)
+        
+        highlighter = None
+        if not self.simulation:
+            highlighter = self.models[-1]            
                   
-        text_for_label = [suggestion.get_htmldocview(highlighter=self.models[-1], confidence_score=confidence)
+        text_for_label = [suggestion.get_htmldocview(highlighter=highlighter, confidence_score=confidence)
                           for suggestion,confidence in zip(self.random_sample_from_batch,yhat)]
+        
         client_current_index = len(self.all_texts)+1
         self.all_texts += text_for_label
         logging.debug('Displaying suggestions to the user ...')
@@ -604,7 +709,8 @@ class SCAL(object):
           f'({SCAL._show_ids(list(self.random_sample_from_batch))}).')
                   
         Uj = [elem for elem in self.full_U if not elem in set([elem for list_ in self.removed for elem in list_])]
-        tj = np.min(self.models[self.j].predict([elem for elem in self.full_U if not elem in Uj]))
+        
+        tj = np.min(self.models[self.j].predict([elem for elem in self.full_U if not elem in Uj], item_representation=self.item_representation))
         logging.info(f'Tj (current threshold)={tj}')
         self.size_of_Uj = len(Uj)
         self.precision_estimates.append(r/self.b)
@@ -692,7 +798,7 @@ class SCAL(object):
         # relevant if self.models[-1].predict(...) >= t     (for second threshold)
         #         
         
-        t = np.min(self.models[j].predict([elem for elem in self.full_U if not elem in Uj]))
+        t = np.min(self.models[j].predict([elem for elem in self.full_U if not elem in Uj], item_representation=self.item_representation))
         
 #         print('DEBUG >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 #         print(f'max(Sj(Uj))        ={np.max(self.models[j].predict(self._get_Uj(j))):4.3f} (mejor)')
@@ -709,15 +815,15 @@ class SCAL(object):
                   
         # SAVING LABELED DATA
         logging.debug(f'Saving {len(self.labeled_collection)} documents as labeled data in '\
-                      f'./sessions/scal/{self.session_name}/data/labeled_data'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'\
+                      ''+os.path.join(self.home_folder, f'data/labeled_data')+time.strftime("%Y-%m-%d_%H-%M")+'.csv'\
                       ' before making final predictions')
                   
-        with open(f'./sessions/scal/{self.session_name}/data/labeled_data'+time.strftime("%Y-%m-%d_%H-%M")+'.csv', 'w') as writer:
+        with open(os.path.join(self.home_folder, f'data/labeled_data'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'), 'w') as writer:
                   writer.write('\n'.join([';'.join([item.id_,item.label]) for item in self.labeled_collection]))
                   
         # FINAL CLASSIFIER
         logging.debug('Creating final classifier ...')
-        self.models.append(SCAL._build_classifier(self.labeled_collection))
+        self.models.append(self._build_classifier(self.labeled_collection))
 #         print(f'Rhat={self.Rhat}')
 #         print(f'Size of unlabeled={len(self.unlabeled_collection)}')
 #         print(f'Size of labeled={len(self.labeled_collection)}')
@@ -735,7 +841,7 @@ class SCAL(object):
 
 #         print(f'proportion={self.proportion_relevance_feedback}')
         logging.debug(f'Making prediction over set of unlabeled articles ({len(final_unlabeled_collection):,}).')
-        yhat = self.models[-1].predict(final_unlabeled_collection, progress_bar=True)
+        yhat = self.models[-1].predict(final_unlabeled_collection, progress_bar=True, item_representation=self.item_representation)
         
         relevant = yhat>=t      
         logging.info(f'Relevant found (total) ={len([item for item in self.labeled_collection if item.is_relevant()])+np.sum(relevant)}'\
@@ -765,7 +871,7 @@ class SCAL(object):
 #         print(f'len(relevant_data)={len(relevant_data)}')
 #         print(f'len(confidence)   ={len(confidence)}')
         logging.debug('Preparing file for exporting ...')
-        filename = f'sessions/scal/{self.session_name}/data/exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'
+        filename = os.path.join(self.home_folder, f'data/exported_data_'+time.strftime("%Y-%m-%d_%H-%M")+'.csv')
         with open(filename, 'w') as writer:
             writer.write('URL,relevant_or_suggested,confidence\n')
             count=0

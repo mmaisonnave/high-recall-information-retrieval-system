@@ -45,13 +45,14 @@ class DataItem(object):
                            ]
     def __init__(self, *args):
         self._preloaded_vector={}
+        self.label=DataItem.UNK_LABEL 
         if os.path.isfile(args[0]):
             # When input is only a FILEPATH
             file_ = args[0]
             self.id_ = file_.split('/')[-1][:-4]
             self.source = '/'.join(file_.split('/')[:-1])
 #             self.source = "GM1" if "GM_all_1945_1956" in file_ else "GM2"
-            self.label=DataItem.UNK_LABEL    
+#             self.label=DataItem.UNK_LABEL    
             assert os.path.isfile(self.filename())
         else:
             # When input is ID
@@ -70,7 +71,7 @@ class DataItem(object):
             assert self.id_.isnumeric(), f'id={id_} - type(id_)={type(id_)}'
 #             self.id_ = id_
 #             self.source = source
-            self.label = DataItem.UNK_LABEL            
+#             self.label = DataItem.UNK_LABEL            
             assert os.path.isfile(self.filename())
       
     def is_synthetic(self):
