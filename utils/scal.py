@@ -296,8 +296,21 @@ class SCAL(object):
     def _smallest_distance_to_labeled_collection(self, aggregation ):
         assert aggregation=='average' or aggregation=='min', 'Please specify a valid aggregation function (average or min).'
         item_list = self.random_unlabeled_collection
+<<<<<<< HEAD
         m1 = DataItem.get_X(item_list)
         m2 = DataItem.get_X(self.labeled_collection)
+=======
+        if not self.item_representation is None:
+            if type(self.item_representation[list(self.item_representation)[0]])==np.ndarray:
+                m1 = np.vstack([self.item_representation[item.id_] for item in item_list])
+                m2 = np.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
+            else:
+                m1 = sparse.vstack([self.item_representation[item.id_] for item in item_list])
+                m2 = sparse.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
+        else:
+            m1 = DataItem.get_X(item_list)
+            m2 = DataItem.get_X(self.labeled_collection)
+>>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
         distances = pairwise_distances(m1,m2)
         if aggregation=='average':
             mindist = np.average(distances,axis=1)
