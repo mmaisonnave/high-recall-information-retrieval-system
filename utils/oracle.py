@@ -64,7 +64,6 @@ class Oracle(object):
             else:
                 representation = pickle.load(open('glove_item_representation.pickle', 'rb'))
             return representation
-<<<<<<< HEAD
         elif type_=='sbert':
             if not os.path.isfile('sbert_item_representation.pickle'):
                 from sentence_transformers import SentenceTransformer
@@ -88,9 +87,4 @@ class Oracle(object):
                 representation = pickle.load(open('sbert_item_representation.pickle', 'rb'))
 #                 print('[OK]')
             return representation
-                
-            
-=======
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
-            
-    
+

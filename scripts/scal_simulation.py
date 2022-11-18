@@ -5,11 +5,8 @@ from utils.scal import SCAL
 from utils.oracle import Oracle
 from utils.data_item import QueryDataItem, GenericSyntheticDocument
 
-<<<<<<< HEAD
 import pickle
 
-=======
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
 import spacy
 nlp = spacy.load('en_core_web_lg')
 import re 
@@ -45,13 +42,10 @@ if __name__=='__main__':
     if re.search('--glove', input_):
         glove=True
         
-<<<<<<< HEAD
     sbert=False
     if re.search('--sbert', input_):
         sbert=True
         
-=======
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
     relevance_function = re.findall('.*--ranking-function=([0-9a-z\_]*).*', input_)[0]
     N = int(re.findall('.*--N=([0-9][0-9]*).*', input_)[0])
     n = int(re.findall('.*--n=([0-9][0-9]*).*', input_)[0])
@@ -60,18 +54,12 @@ if __name__=='__main__':
     proportion_relevance=float(re.findall('.*--proportion-relevance=([0-9\.][0-9\.]*).*', input_)[0])
 #     diversity = not re.search('.*--diversity', input_) is None
 #     average_diversity = not re.search('.*--average-diversity', input_) is None
-<<<<<<< HEAD
     session_name=f'simulation_tr_{int(target_recall*100)}_n_{n}_N_{N}_proportion_{int(proportion_relevance*100)}_{relevance_function}_seed_{seed}'
     if glove:
         session_name=session_name+'_glove'
     if sbert:
         session_name=session_name+'_sbert'
         
-=======
-    session_name=f'simulation_tr_{int(target_recall*100)}_N_{N}_proportion_{int(proportion_relevance*100)}_{relevance_function}_seed_{seed}'
-    if glove:
-        session_name=session_name+'_glove'
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
 #     if diversity:
 #         session_name = session_name + '_diversity'
 #     if average_diversity:
@@ -80,11 +68,8 @@ if __name__=='__main__':
     unlabeled = Oracle.get_collection()
     if glove:
         representations = Oracle.get_document_representation(type_='GloVe')
-<<<<<<< HEAD
     elif sbert:
         representations = Oracle.get_document_representation(type_='sbert')
-=======
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
     else:
         representations = Oracle.get_document_representation(type_='BoW')
 
@@ -99,14 +84,10 @@ if __name__=='__main__':
     doc.set_relevant()
 
     if glove:
-<<<<<<< HEAD
         representations[doc.id_] = nlp(topic_description).vector
     elif sbert:
         representations[doc.id_] = pickle.load(open('../sbert_synthetic_dp_vec.pickle', 'rb'))
         
-=======
-        representations[doc.id_] = nlp('dp').vector
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
     else:
         representations[doc.id_] = doc.vector()
     
@@ -127,3 +108,4 @@ if __name__=='__main__':
 #          diversity=diversity,
 #          average_diversity=average_diversity,
         ).run()
+

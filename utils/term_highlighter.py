@@ -64,10 +64,7 @@ class TermHighlighter(object):
             vec = item_representation[item_list[0].id_]
             if type(vec)==np.ndarray:
                 X = np.vstack([item_representation[item.id_] for item in item_list])
-<<<<<<< HEAD
 #                 print(f'DEBUG:: X.shape={X.shape}')
-=======
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
             else:
                 X = sparse.vstack([item_representation[item.id_] for item in item_list])
             
@@ -90,10 +87,7 @@ class TermHighlighter(object):
             X = DataItem.get_X(item_list, type_=DataItem.TYPE_BOW)
         if type(X)==np.ndarray:
             self.mean_value_feature =np.average(X,axis=0)
-<<<<<<< HEAD
 #             print(f'DEBUG:: self.mean_value_feature.shape={self.mean_value_feature.shape}')
-=======
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
         else:
             self.mean_value_feature =np.average(X.toarray(),axis=0)
         
@@ -120,10 +114,7 @@ class TermHighlighter(object):
                 ids = [re.findall('[0-9]{10}',vecname)[0] for vecname in vecnames[ini:fin]]
                 if type(vec)==np.ndarray:
                     X = np.vstack([item_representation[id_] for id_ in ids])
-<<<<<<< HEAD
 #                     print(f'DEBUG:: X.shape={X.shape}')
-=======
->>>>>>> 52e911f4220bf7f2382e262cc92b6368c417043b
                 else:
                     X = sparse.vstack([item_representation[id_] for id_ in ids])
 
@@ -370,3 +361,4 @@ def test_term_highlighter():
     
     highlighter.highlight(' '.join(highlighter.sorted_terms()[:keep_top])) #first 'terms_per_articles' should be highlighted
     print('OK!')
+
