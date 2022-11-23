@@ -5,11 +5,14 @@ import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy import sparse
 
+from lxml import etree
+from bs4 import BeautifulSoup
+
 # from sentence_transformers import SentenceTransformer
 
-class Dataset20NG(object):
-    DATAPATH = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/files/'
-    VECTORIZER_PATH='/home/ec2-user/SageMaker/mariano/datasets/20news-18828/representations/'
+class DatasetDP(object):
+    DATAPATH = '/home/ec2-user/SageMaker/mariano/datasets/displaced_persons/files/labeled_data_latest_08072022.csv'
+    VECTORIZER_PATH='/home/ec2-user/SageMaker/mariano/datasets/displaced_persons/representations/'
     nlp = spacy.load('en_core_web_lg', disable=['textcat', 'ner', 'parser', 'tager', ])
     distilbert_path = '/home/ec2-user/SageMaker/mariano/huggingface/pretrained/distilbert-base-uncased/'
 
@@ -19,74 +22,79 @@ class Dataset20NG(object):
             'label': [],
             'id':[],
         }
-
-        for folder in os.listdir(Dataset20NG.DATAPATH): 
-            files = os.listdir(os.path.join(Dataset20NG.DATAPATH,folder))
-            data['text'] += [open(os.path.join(Dataset20NG.DATAPATH,folder,file), 'r', encoding='latin-1').read() for file in files]
-            data['label'] += [folder]*len(files)
-            data['id'] += [file.split('/')[-1] for file in files]
+        for line in open(DatasetDP.DATAPATH, 'r').read().splitlines()[1:]:
+            id_, label = line.split(';')
+            assert label==DataItemDP.RELEVANT_LABEL or label== DataItemDP.IRRELEVANT_LABEL
+            data['id'].append(id_)
+            data['label'].append(label)
+            data['text'].append(DataItemDP(id_).get_text())
         
         return pd.DataFrame(data)
     
-    def get_20newsgroup_labeled_collection(category):
-        assert category in set(os.listdir(Dataset20NG.DATAPATH))
+    def get_DP_labeled_collection():
         collection = []
-        for folder in os.listdir(Dataset20NG.DATAPATH): 
-            for file in os.listdir(os.path.join(Dataset20NG.DATAPATH,folder)):
-                collection.append(DataItem20NG(id_=file, category=folder, ), )
-                if folder==category:
-                    collection[-1].set_relevant()
-                else:
-                    collection[-1].set_irrelevant()
+        df = DatasetDP.get_data()
+        for idx in range(df.shape[0]):
+            id_ = df['id'].iloc[idx]
+            label = df['label'].iloc[idx]
+            collection.append(DataItemDP(id_))
+            if label == DataItemDP.RELEVANT_LABEL:
+                collection[-1].set_relevant()
+            else:
+                collection[-1].set_irrelevant()
+
         return collection
     
-    def get_20newsgroup_unlabeled_collection():
+    def get_DP_unlabeled_collection():        
         collection = []
-        for folder in os.listdir(Dataset20NG.DATAPATH): 
-            for file in os.listdir(os.path.join(Dataset20NG.DATAPATH,folder)):
-                collection.append(DataItem20NG(id_=file, category=folder, ), )
+        df = DatasetDP.get_data()
+        for idx in range(df.shape[0]):
+            id_ = df['id'].iloc[idx]
+            collection.append(DataItemDP(id_))
         return collection
     
-    def get_20newsgroup_oracle(category):
-        assert category in set(os.listdir(Dataset20NG.DATAPATH))
+    def get_DP_oracle():
+#         assert category in set(os.listdir(DatasetDP.DATAPATH))
         oracle = {}
-        for folder in os.listdir(Dataset20NG.DATAPATH): 
-            for file in os.listdir(os.path.join(Dataset20NG.DATAPATH,folder)):
-                oracle[f'{folder}/{file}'] = DataItem20NG.RELEVANT_LABEL if folder==category else DataItem20NG.IRRELEVANT_LABEL
-        
+        collection = []
+        df = DatasetDP.get_data()
+        for idx in range(df.shape[0]):            
+            id_ = df['id'].iloc[idx]
+            label = df['label'].iloc[idx]
+            oracle[id_] = label
         return oracle
     
 #     def get_X(type_='bow'):
         
-#         representations = Dataset20NG.get_20newsgroup_representations(type_=type_)
-#         df = Dataset20NG.get_data()
+#         representations = DatasetDP.get_DP_representations(type_=type_)
+#         df = DatasetDP.get_data()
         
 #         if type_=='bow':
 #             m = sparse.vstack([representations[f'{label}/{id_}'] for label, id_ in zip(df.iloc[:,1], df.iloc[:,2])])
 #             return m
     
     def _preprocessor(text):
-        return ' '.join([token.lemma_.lower() for token in Dataset20NG.nlp(text) if token.lemma_.isalpha()])
+        return ' '.join([token.lemma_.lower() for token in DatasetDP.nlp(text) if token.lemma_.isalpha()])
     
-    def get_20newsgroup_representations(type_='bow'):
-        df = Dataset20NG.get_data()
+    def get_DP_representations(type_='bow'):
+        df = DatasetDP.get_data()
         representations = {}
-        representations_path = os.path.join(Dataset20NG.VECTORIZER_PATH, f'20NG_representations_{type_}.pickle')
+        representations_path = os.path.join(DatasetDP.VECTORIZER_PATH, f'DP_representations_{type_}.pickle')
         if os.path.isfile(representations_path):
             print(f'representations file found, loading pickle ({representations_path}) ... ')
             representations = pickle.load(open(representations_path, 'rb'))
         else:
             if type_=='bow':
                 print('Using BOW representation')
-                vectorizer_path = os.path.join(Dataset20NG.VECTORIZER_PATH, f'20NG_vectorizer_{type_}.pickle')
+                vectorizer_path = os.path.join(DatasetDP.VECTORIZER_PATH, f'DP_vectorizer_{type_}.pickle')
                 print('representations file NOT found, creating from vectorizer... ')
                 if not os.path.isfile(vectorizer_path):
                     print('vectorizer file NOT found, creating ... ')
 
                     stopwords=['ll', 've']+\
-                            list(Dataset20NG.nlp.Defaults.stop_words.difference({'\'ll','\'ve','further','regarding','used','using',}))
+                            list(DatasetDP.nlp.Defaults.stop_words.difference({'\'ll','\'ve','further','regarding','used','using',}))
                     vectorizer = TfidfVectorizer(lowercase=True, 
-                                                 preprocessor=Dataset20NG._preprocessor, 
+                                                 preprocessor=DatasetDP._preprocessor, 
                                                  stop_words=stopwords,
                                                  ngram_range=(1,3), 
                                                  use_idf=True,
@@ -101,7 +109,7 @@ class Dataset20NG(object):
                 for idx in range(len(df)):
                     id_ = df['id'].iloc[idx]
                     label = df['label'].iloc[idx]
-                    representations[f'{label}/{id_}']=X[idx,:]
+                    representations[f'{id_}']=X[idx,:]
                 print('Dumping representations file to disk')
                 pickle.dump(representations, open(representations_path, 'wb'))
             elif type_=='glove':
@@ -109,18 +117,18 @@ class Dataset20NG(object):
                 for idx in range(len(df)):
                     id_ = df['id'].iloc[idx]
                     label = df['label'].iloc[idx]
-                    representations[f'{label}/{id_}']=Dataset20NG.nlp(df['text'].iloc[idx]).vector
+                    representations[f'{id_}']=DatasetDP.nlp(df['text'].iloc[idx]).vector
                 pickle.dump(representations, open(representations_path, 'wb'))
             elif type_=='sbert':
                 print('Computing sbert ...')
-                model = SentenceTransformer(Dataset20NG.distilbert_path)
+                model = SentenceTransformer(DatasetDP.distilbert_path)
                     
                 vectors =  model.encode(df['text'])
         
                 for idx,vector in enumerate(vectors):
                     id_ = df['id'].iloc[idx]
                     label = df['label'].iloc[idx]
-                    representations[f'{label}/{id_}'] = vector
+                    representations[f'{id_}'] = vector
 
                     
                 pickle.dump(representations, open(representations_path, 'wb'))
@@ -129,7 +137,7 @@ class Dataset20NG(object):
     
 
 
-class DataItem20NG(object):
+class DataItemDP(object):
     UNKNOWN_LABEL='U'
     RELEVANT_LABEL='R'
     IRRELEVANT_LABEL='I'
@@ -141,36 +149,55 @@ class DataItem20NG(object):
 #         if type_=='bow':
 #             vectorizer_path = os.path.join(VECTORIZER_PATH,)  
     
-    def __init__(self, id_, category):
-        self.id_=f'{category}/{id_}'
-        self.label=DataItem20NG.UNKNOWN_LABEL
-        self.category=category
+    def __init__(self, id_):
+        self.id_=id_
+        self.label=DataItemDP.UNKNOWN_LABEL
+
     def is_relevant(self, ):
-        return self.label==DataItem20NG.RELEVANT_LABEL
+        return self.label==DataItemDP.RELEVANT_LABEL
     def is_irrelevant(self, ):
-        return self.label==DataItem20NG.IRRELEVANT_LABEL
+        return self.label==DataItemDP.IRRELEVANT_LABEL
     def is_unknown(self, ):
-        return self.label==DataItem20NG.UNKNOWN_LABEL
+        return self.label==DataItemDP.UNKNOWN_LABEL
     
     def set_relevant(self, ):
-        self.label=DataItem20NG.RELEVANT_LABEL
+        self.label=DataItemDP.RELEVANT_LABEL
     def set_irrelevant(self, ):
-        self.label=DataItem20NG.IRRELEVANT_LABEL
+        self.label=DataItemDP.IRRELEVANT_LABEL
     def set_unknown(self, ):
-        self.label=DataItem20NG.UNKNOWN_LABEL
+        self.label=DataItemDP.UNKNOWN_LABEL
     
     
     def get_text(self, ):
-        return open(self.get_filename(), 'r', encoding='latin-1').read()
+        tree = etree.parse(self.get_filename())
+        root = tree.getroot()
+        if root.find('.//HiddenText') is not None:
+            text = (root.find('.//HiddenText').text)
+
+        elif root.find('.//Text') is not None:
+            text = (root.find('.//Text').text)
+
+        else:
+            text = None
+        title = root.find('.//Title').text
+        concated_text = ''
+        if not title is None:
+            concated_text = f'{title}. '
+        if not text is None:
+            concated_text += f'{text}'
+        return BeautifulSoup(concated_text,'html.parser').get_text()
+#         return open(self.get_filename(), 'r', encoding='latin-1').read()
     
     def get_htmldocview(self, ):
         self.get_text()
     
     def get_filename(self, ):
-        return os.path.join(Dataset20NG.DATAPATH, self.id_, )
+        for folder in os.listdir('/home/ec2-user/SageMaker/data/'):
+            if os.path.isfile(os.path.join('/home/ec2-user/SageMaker/data/', folder, self.id_+ '.xml')):
+                return os.path.join('/home/ec2-user/SageMaker/data/', folder, self.id_+'.xml')
     
     def __str__(self, ):
-        return f'<id={self.id_}, label={self.label}, >'
+        return f'<DP Dataset, id={self.id_}, label={self.label}, >'
     
     def _vector_filename(self, ):
         return 'N/A'

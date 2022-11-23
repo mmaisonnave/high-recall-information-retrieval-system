@@ -1,12 +1,12 @@
 import numpy as np
-from utils.newsgroup20.dataset import  DataItem20NG
-from utils.newsgroup20.models import LogisticRegression20NG, SVM20NG
+from utils.displaced_persons.dataset import  DataItemDP
+from utils.displaced_persons.models import LogisticRegressionDP, SVMDP
 import datetime
 import pytz
 ####################################################################################
-#                                20 newsgroup SCAL                                 #
+#                              displaced persons SCAL                              #
 ####################################################################################
-class SCAL20NG(object):
+class SCALDP(object):
     HOME_FOLDER=f'sessions/scal/'
     
     def __init__(self,
@@ -21,7 +21,7 @@ class SCAL20NG(object):
                  model_type='logreg',
                  oracle=None,
                  seed=2022):
-        assert all([oracle[id_]==DataItem20NG.RELEVANT_LABEL or oracle[id_]==DataItem20NG.IRRELEVANT_LABEL for id_ in oracle])
+        assert all([oracle[id_]==DataItemDP.RELEVANT_LABEL or oracle[id_]==DataItemDP.IRRELEVANT_LABEL for id_ in oracle])
         self.model_type= model_type
         self.B=1
         self.oracle=oracle
@@ -44,7 +44,7 @@ class SCAL20NG(object):
         
         self.full_U = self.sample_unlabeled_collection
         
-        self.cant_iterations = SCAL20NG._cant_iterations(self.N)        
+        self.cant_iterations = SCALDP._cant_iterations(self.N)        
         self.Rhat=np.zeros(shape=(self.cant_iterations,))
         
         self.j=0            
@@ -69,22 +69,12 @@ class SCAL20NG(object):
     
     def _select_highest_scoring_docs(self, function):
         """
-            valid functions: "relevance" "uncertainty" "avg_distance" "min_distance"
+            valid functions: "relevance" "uncertanty" "avg_distance" "min_distance"
         """
         # RELEVANCE 
         if function=='relevance':
             yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
             args = np.argsort(yhat)[::-1]
-            
-        # UNCERTAINTY
-        elif function=='uncertainty':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
-            args = np.argsort(np.abs(yhat-0.5))
-                
-        # RANDOM
-        elif function=='random':
-            args = list(range(len(self.random_unlabeled_collection)))
-            np.random.shuffle(args)
      
         else:
             assert False, f'Invalid ranking function: {function}'
@@ -92,8 +82,8 @@ class SCAL20NG(object):
         return [self.sample_unlabeled_collection[arg] for arg in args[:self.B]]
     
     def _extend_with_random_documents(self):    
-        
-        assert all([item.is_unknown() for item in self.sample_unlabeled_collection]), f'B={self.B} - j={self.j}'
+        assert all([item.is_unknown() for item in self.sample_unlabeled_collection]), \
+                                        f'len(sample_unlabeled_collection)={len(self.sample_unlabeled_collection)}'
         
         extension = self.ran.choice(self.sample_unlabeled_collection, size=min(100,len(self.sample_unlabeled_collection)), replace=False)
         list(map(lambda x: x.set_irrelevant(), extension))
@@ -106,9 +96,9 @@ class SCAL20NG(object):
     def _build_classifier(self, training_collection):
         assert self.model_type=='logreg' or self.model_type=='svm'
         if self.model_type=='logreg':
-            model = LogisticRegression20NG()
+            model = LogisticRegressionDP()
         elif self.model_type=='svm':
-            model = SVM20NG()
+            model = SVMDP()
             
         model.fit(training_collection, item_representation=self.item_representation)
         return model
@@ -160,7 +150,7 @@ class SCAL20NG(object):
         # new model created, 
         self.models.append(self._build_classifier(list(extension)+list(self.labeled_collection)))
 
-        SCAL20NG._label_as_unknown(extension)
+        SCALDP._label_as_unknown(extension)
         self.sorted_docs = self._select_highest_scoring_docs(function=self.ranking_function)
 
         self.random_sample_from_batch = self.ran.choice(self.sorted_docs, size=self.b, replace=False)
@@ -185,7 +175,7 @@ class SCAL20NG(object):
         # ADD LABELS TO self.random_sample_from_batch
         
         for item in self.random_sample_from_batch:
-            if DataItem20NG.RELEVANT_LABEL==self.oracle[item.id_]:
+            if DataItemDP.RELEVANT_LABEL==self.oracle[item.id_]:
                 item.set_relevant()
             else:
                 item.set_irrelevant()
@@ -294,7 +284,7 @@ class SCAL20NG(object):
                                      
                 
         # METRICS
-        ytrue = np.array([1 if self.oracle[item.id_]==DataItem20NG.RELEVANT_LABEL else 0  for item in final_unlabeled_collection])
+        ytrue = np.array([1 if self.oracle[item.id_]==DataItemDP.RELEVANT_LABEL else 0  for item in final_unlabeled_collection])
         print(f'size of ytrue={len(ytrue)} (relevant={len(ytrue[ytrue==1])})')
         acc = accuracy_score(ytrue,yhat>=t)
         prec = precision_score(ytrue, yhat>=t)
@@ -317,7 +307,7 @@ class SCAL20NG(object):
                       'Model': [self.model_type],
 #                       'Representation': ['TF-IDF'],
                       'Ranking Function': [self.ranking_function],
-                      'Dataset': ['20newsgroup'],   
+                      'Dataset': ['displaced_persons'],   
                       'N': [self.N],
                       'n': [self.n],
                       'Effort': [self._total_effort()],
