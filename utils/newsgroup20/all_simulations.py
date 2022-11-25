@@ -29,7 +29,7 @@ if __name__=='__main__':
     Ns = [int(p*dataset_size) for p in [0.05, 0.10, 0.20, 0.25, 0.5, 0.75, 1.0]]
     ns = [1, 3, 5, 10, 20]
     models = ['logreg', 'svm']
-    representations = ['bow', 'sbert', 'glove']
+    representations_names = ['bow', 'sbert', 'glove']
     sampling_functions = ['relevance',]
     
     results_file = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/simulation_results/all_results_v2.csv'
@@ -39,11 +39,11 @@ if __name__=='__main__':
         info(f'Read previous results. Results found: {len(df):,}')
     
     total=0
-    info(f'Total of repetitions requested: {len(categories)*len(representations)*len(models)*len(Ns)*len(ns)*no_of_seeds:,}')
+    info(f'Total of repetitions requested: {len(categories)*len(representations_names)*len(models)*len(Ns)*len(ns)*no_of_seeds:,}')
     for category in categories:
         info(f'Working with category={category}')
         oracle = Dataset20NG.get_20newsgroup_oracle(category=category)
-        for representation in representations:
+        for representation in representations_names:
             info(f'Working with representation={representation}')
             representations = Dataset20NG.get_20newsgroup_representations(type_=representation)
             for model in models:

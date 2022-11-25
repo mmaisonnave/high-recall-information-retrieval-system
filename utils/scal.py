@@ -827,8 +827,12 @@ class SCAL(object):
 #         print(f'Rhat={self.Rhat}')
 #         print(f'Size of unlabeled={len(self.unlabeled_collection)}')
 #         print(f'Size of labeled={len(self.labeled_collection)}')
-        logging.debug(f'Removing {len(self.labeled_collection[1:])} labeled documents from full unlabeled collection.')
-        final_unlabeled_collection = [item for item in self.unlabeled_collection if not item in self.labeled_collection[1:]]
+
+        ## CORREGIR
+    
+        no_of_synthetic = len([item for item in self.labeled_collection if item.is_synthetic()])
+        logging.debug(f'Removing {len(self.labeled_collection[no_of_synthetic:])} labeled documents from full unlabeled collection.')
+        final_unlabeled_collection = [item for item in self.unlabeled_collection if not item in self.labeled_collection[no_of_synthetic:]]
 #         print(f'Size of unlabeled after removing labeled={len(final_unlabeled_collection)}')
 
         logging.debug('-'*30+'FINISHING SCAL'+'-'*30)

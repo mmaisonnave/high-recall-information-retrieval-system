@@ -32,7 +32,7 @@ if __name__=='__main__':
     representations = ['bow', 'sbert', 'glove']
     sampling_functions = ['relevance',]
     
-    results_file = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/simulation_results/all_results_v3.csv'
+    results_file = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/simulation_results/all_results_v2.csv'
     output_file = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/simulation_results/auc_results.csv'
     assert os.path.isfile(results_file)
     df = pd.read_csv(results_file)

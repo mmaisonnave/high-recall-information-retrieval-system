@@ -75,7 +75,25 @@ class SCALDP(object):
         if function=='relevance':
             yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
             args = np.argsort(yhat)[::-1]
-     
+            
+        # UNCERTAINTY
+        elif function=='uncertainty':
+            yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+            args = np.argsort(np.abs(yhat-0.5))
+            
+        elif function=='half_relevance_half_uncertainty':
+            current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
+            if current_proportion<0.5:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(yhat)[::-1]
+            else:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(np.abs(yhat-0.5))
+                
+        elif function=='random':
+            args = list(range(len(self.sample_unlabeled_collection)))
+            np.random.shuffle(args)     
+            
         else:
             assert False, f'Invalid ranking function: {function}'
 

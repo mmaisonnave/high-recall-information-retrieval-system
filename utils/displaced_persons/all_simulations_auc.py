@@ -32,8 +32,8 @@ if __name__=='__main__':
     representations = ['bow', 'sbert', 'glove']
     sampling_functions = ['relevance',]
     
-    results_file = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/simulation_results/all_results_v3.csv'
-    output_file = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/simulation_results/auc_results.csv'
+    results_file = '/home/ec2-user/SageMaker/mariano/datasets/displaced_persons/simulation_results/all_results_final.csv'
+    output_file = '/home/ec2-user/SageMaker/mariano/datasets/displaced_persons/simulation_results/auc_results.csv'
     assert os.path.isfile(results_file)
     df = pd.read_csv(results_file)
     info(f'Read previous results. Results found: {len(df):,}')
@@ -47,9 +47,11 @@ if __name__=='__main__':
             'Recall': [],
             'F1-Score': [],
            }
+    rows=0
     for representation in representations:
         for model in models:
             for rank_function in sampling_functions:
+                rows+=1
                 mask = (df['Model']==model) & (df['representation']==representation) & (df['Ranking Function']==rank_function)
                 results = df[mask].groupby('Effort').mean()
                 data['representation']+=[representation]
@@ -63,6 +65,7 @@ if __name__=='__main__':
                     
                     data[metric].append(auc_score)
                     
+    info(f'Rows computed: {rows}')            
+    info(f'Saving AUC results to: {output_file}')
     pd.DataFrame(data).to_csv(output_file)
                 
-    info(f'Total TO-DO: {total}')

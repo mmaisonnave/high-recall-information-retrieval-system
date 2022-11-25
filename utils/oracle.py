@@ -87,4 +87,4 @@ class Oracle(object):
                 representation = pickle.load(open('sbert_item_representation.pickle', 'rb'))
 #                 print('[OK]')
             return representation
-
+          

@@ -361,4 +361,3 @@ def test_term_highlighter():
     
     highlighter.highlight(' '.join(highlighter.sorted_terms()[:keep_top])) #first 'terms_per_articles' should be highlighted
     print('OK!')
-

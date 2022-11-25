@@ -27,8 +27,8 @@ if __name__=='__main__':
     Ns = [int(p*dataset_size) for p in [0.05, 0.10, 0.20, 0.25, 0.5, 0.75, 1.0]]
     ns = [1, 3, 5, 10, 20]
     models = ['logreg', 'svm']
-    representations = ['bow', 'sbert', 'glove']
-    sampling_functions = ['relevance',]
+    representations_names = ['bow', 'sbert', 'glove']
+    sampling_functions = ['relevance', 'uncertainty', 'half_relevance_half_uncertainty']
     
     results_file = '/home/ec2-user/SageMaker/mariano/datasets/displaced_persons/simulation_results/all_results_final.csv'
     df=None
@@ -37,9 +37,9 @@ if __name__=='__main__':
         info(f'Read previous results. Results found: {len(df):,}')
     
     total=0
-    info(f'Total of repetitions requested: {len(representations)*len(models)*len(Ns)*len(ns)*no_of_seeds:,}')
+    info(f'Total of repetitions requested: {len(representations_names)*len(models)*len(Ns)*len(ns)*no_of_seeds*len(sampling_functions):,}')
     oracle = DatasetDP.get_DP_oracle()
-    for representation in representations:
+    for representation in representations_names:
         representations = DatasetDP.get_DP_representations(type_=representation)
         for model in models:
             for rank_function in sampling_functions:
@@ -47,7 +47,7 @@ if __name__=='__main__':
                     for n in ns:
                         to_do=no_of_seeds
                         if not df is None:                            
-                            processed = how_many_processed(df, N, n, model, representation, rank_function, category)
+                            processed = how_many_processed(df, N, n, model, representation, rank_function)
                             if processed>0:
                                 pass
                             if to_do<processed:
