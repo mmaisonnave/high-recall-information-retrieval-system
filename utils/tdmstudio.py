@@ -23,7 +23,7 @@ def get_title_and_text(filename):
     return BeautifulSoup(str_, parser='html.parser', features="lxml").get_text()
 
 
-def get_title(filename):
+def get_title(filename:str) -> str:
     tree = etree.parse(filename)
     root = tree.getroot()
    

@@ -28,7 +28,15 @@ if __name__=='__main__':
     ns = [1, 3, 5, 10, 20]
     models = ['logreg', 'svm']
     representations_names = ['bow', 'sbert', 'glove']
-    sampling_functions = ['relevance', 'uncertainty', 'half_relevance_half_uncertainty']
+    sampling_functions = ['relevance', 
+                          'uncertainty',
+                          '1quarter_relevance_3quarters_uncertainty',
+                          '3quarter_relevance_1quarters_uncertainty',
+                          'relevance_with_avg_diversity',
+                          'relevance_with_min_diversity',
+                          'uncertainty_with_avg_diversity',
+                          'uncertainty_with_min_diversity',
+                          'half_relevance_half_uncertainty']
     
     results_file = '/home/ec2-user/SageMaker/mariano/datasets/displaced_persons/simulation_results/all_results_final.csv'
     df=None

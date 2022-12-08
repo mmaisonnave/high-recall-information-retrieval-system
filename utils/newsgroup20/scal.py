@@ -78,12 +78,21 @@ class SCAL20NG(object):
             
         # UNCERTAINTY
         elif function=='uncertainty':
-            yhat = self.models[-1].predict(self.random_unlabeled_collection, item_representation=self.item_representation)
+            yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
             args = np.argsort(np.abs(yhat-0.5))
+            
+        elif function=='1quarter_relevance_3quarters_uncertainty':
+            current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
+            if current_proportion<0.25:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(yhat)[::-1]
+            else:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(np.abs(yhat-0.5))
                 
         # RANDOM
         elif function=='random':
-            args = list(range(len(self.random_unlabeled_collection)))
+            args = list(range(len(self.sample_unlabeled_collection)))
             np.random.shuffle(args)
      
         else:

@@ -30,7 +30,7 @@ if __name__=='__main__':
     ns = [1, 3, 5, 10, 20]
     models = ['logreg', 'svm']
     representations_names = ['bow', 'sbert', 'glove']
-    sampling_functions = ['relevance',]
+    sampling_functions = ['relevance', '1quarter_relevance_3quarters_uncertainty']
     
     results_file = '/home/ec2-user/SageMaker/mariano/datasets/20news-18828/simulation_results/all_results_v2.csv'
     df=None

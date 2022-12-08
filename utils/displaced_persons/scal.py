@@ -90,6 +90,53 @@ class SCALDP(object):
                 yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
                 args = np.argsort(np.abs(yhat-0.5))
                 
+        elif function=='1quarter_relevance_3quarters_uncertainty':
+            current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
+            if current_proportion<0.25:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(yhat)[::-1]
+            else:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(np.abs(yhat-0.5))
+                
+                
+                
+        elif function=='3quarter_relevance_1quarters_uncertainty':
+            current_proportion = len(self.labeled_collection)/(self._total_effort()+1)
+            if current_proportion<0.75:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(yhat)[::-1]
+            else:
+                yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+                args = np.argsort(np.abs(yhat-0.5))
+                
+                
+        elif function=='relevance_with_avg_diversity':
+            yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+            mindist = self._smallest_distance_to_labeled_collection(aggregation='average')
+            haverage = 2*((mindist*yhat)/(mindist+yhat))
+            assert mindist.shape==yhat.shape, f'{mindist.shape}!={yhat.shape}'
+            args = np.argsort(haverage)[::-1]
+        elif function=='relevance_with_min_diversity':
+            yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+            mindist = self._smallest_distance_to_labeled_collection(aggregation='min')
+            haverage = 2*((mindist*yhat)/(mindist+yhat))
+            assert mindist.shape==yhat.shape, f'{mindist.shape}!={yhat.shape}'
+            args = np.argsort(haverage)[::-1]
+            
+        elif function=='uncertainty_with_avg_diversity':
+            yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+            auxiliar = 1/(1+np.abs(yhat-0.5))  # Higher when most uncertainty   [0.66, 0.67, ..., 0.98, ..., 0.67, 0.66]
+            mindist = self._smallest_distance_to_labeled_collection(aggregation='average')
+            haverage = 2*((mindist*auxiliar)/(mindist+auxiliar))
+            args = np.argsort(haverage)[::-1]
+        elif function=='uncertainty_with_min_diversity':
+            yhat = self.models[-1].predict(self.sample_unlabeled_collection, item_representation=self.item_representation)
+            auxiliar = 1/(1+np.abs(yhat-0.5))  # Higher when most uncertainty   [0.66, 0.67, ..., 0.98, ..., 0.67, 0.66]
+            mindist = self._smallest_distance_to_labeled_collection(aggregation='min')
+            haverage = 2*((mindist*auxiliar)/(mindist+auxiliar))
+            args = np.argsort(haverage)[::-1]
+                
         elif function=='random':
             args = list(range(len(self.sample_unlabeled_collection)))
             np.random.shuffle(args)     
@@ -107,6 +154,34 @@ class SCALDP(object):
         list(map(lambda x: x.set_irrelevant(), extension))
         assert all([item.is_irrelevant() for item in extension])
         return extension
+    
+    def _smallest_distance_to_labeled_collection(self, aggregation ):
+        assert aggregation=='average' or aggregation=='min', 'Please specify a valid aggregation function (average or min).'
+        item_list = self.sample_unlabeled_collection
+        if not self.item_representation is None:
+            if type(self.item_representation[list(self.item_representation)[0]])==np.ndarray:
+                m1 = np.vstack([self.item_representation[item.id_] for item in item_list])
+                m2 = np.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
+            else:
+                m1 = sparse.vstack([self.item_representation[item.id_] for item in item_list])
+                m2 = sparse.vstack([self.item_representation[item.id_] for item in self.labeled_collection])
+        else:
+
+            m1 = DataItem.get_X(item_list)
+            m2 = DataItem.get_X(self.labeled_collection)
+        
+        
+        distances = pairwise_distances(m1,m2)
+        if aggregation=='average':
+            mindist = np.average(distances,axis=1)
+        elif  aggregation=='min':
+            mindist = np.min(distances,axis=1)
+        
+            
+        if np.max(mindist)!=0:
+            mindist=mindist/np.max(mindist)
+        assert mindist.shape==(len(self.sample_unlabeled_collection),)
+        return mindist
     
     def _label_as_unknown(collection):
         list(map(lambda x: x.set_unknown(), collection))
