@@ -40,7 +40,7 @@ def main():
     no_of_seeds = 1
     models = ['logreg', 'svm']
     representations = ['bow', 'sbert', 'glove']
-    sampling_functions = ['relevance',]
+    sampling_functions = ['relevance', '1quarter_relevance_3quarters_uncertainty']
     
     assert os.path.isfile(results_file)
     df = pd.read_csv(results_file)

@@ -1,0 +1,17 @@
+URL,relevant_or_suggested,confidence
+https://proquest.com/docview/1151636504,rel,1.000
+https://proquest.com/docview/1151316407,rel,1.000
+https://proquest.com/docview/1366203438,rel,1.000
+https://proquest.com/docview/1126309571,rel,1.000
+https://proquest.com/docview/1125764078,rel,1.000
+https://proquest.com/docview/1151128247,rel,1.000
+https://proquest.com/docview/2610377181,rel,1.000
+https://proquest.com/docview/1237728590,rel,1.000
+https://proquest.com/docview/2459966061,rel,1.000
+https://proquest.com/docview/1125527397,rel,1.000
+https://proquest.com/docview/1242218350,rel,1.000
+https://proquest.com/docview/1143830377,rel,1.000
+https://proquest.com/docview/1238291722,sugg,0.045
+https://proquest.com/docview/1282879091,sugg,0.048
+https://proquest.com/docview/1242221409,sugg,0.045
+https://proquest.com/docview/1316678312,sugg,0.047
