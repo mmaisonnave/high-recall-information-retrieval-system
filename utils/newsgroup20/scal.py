@@ -255,7 +255,7 @@ class SCAL20NG(object):
 
         
         t = np.min(self.models[j].predict([elem for elem in self.full_U if not elem in Uj], item_representation=self.item_representation))
-        
+        self.threshold=t
                   
 #         with open(os.path.join(self.home_folder, f'data/labeled_data'+time.strftime("%Y-%m-%d_%H-%M")+'.csv'), 'w') as writer:
 #                   writer.write('\n'.join([';'.join([item.id_,item.label]) for item in self.labeled_collection]))
