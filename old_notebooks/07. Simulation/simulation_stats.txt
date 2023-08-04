@@ -1,0 +1,19 @@
+experiment_name                                    - AUC prec  - AUC rec   - AUC f1
+0.8_1.0_1quarter_relevance_3quarters_uncertainty_sbert       - 0.511 - 0.985 - 0.670
+0.8_1.0_3quarter_relevance_1quarters_uncertainty_sbert       - 0.499 - 0.986 - 0.659
+0.8_1.0_relevance_sbert                                      - 0.518 - 0.980 - 0.674
+0.8_1.0_relevance_BoW                                        - 0.545 - 0.897 - 0.647
+0.8_1.0_half_relevance_half_uncertainty_sbert                - 0.518 - 0.982 - 0.675
+0.8_1.0_uncertainty_sbert                                    - 0.530 - 0.979 - 0.685
+0.8_1.0_uncertainty_BoW                                      - 0.537 - 0.917 - 0.648
+0.8_1.0_random_sbert                                         - 0.090 - 1.000 - 0.166
+0.8_1.0_1quarter_relevance_3quarters_uncertainty_BoW         - 0.556 - 0.908 - 0.665
+0.8_1.0_half_relevance_half_uncertainty_GloVe                - 0.553 - 0.923 - 0.685
+0.8_1.0_uncertainty_GloVe                                    - 0.544 - 0.941 - 0.685
+0.8_1.0_half_relevance_half_uncertainty_BoW                  - 0.560 - 0.893 - 0.658
+0.8_1.0_1quarter_relevance_3quarters_uncertainty_GloVe       - 0.551 - 0.936 - 0.689
+0.8_1.0_3quarter_relevance_1quarters_uncertainty_GloVe       - 0.554 - 0.924 - 0.687
+0.8_1.0_3quarter_relevance_1quarters_uncertainty_BoW         - 0.560 - 0.875 - 0.647
+0.8_1.0_random_GloVe                                         - 0.091 - 1.000 - 0.166
+0.8_1.0_relevance_GloVe                                      - 0.551 - 0.924 - 0.683
+0.8_1.0_random_BoW                                           - 0.090 - 1.000 - 0.165

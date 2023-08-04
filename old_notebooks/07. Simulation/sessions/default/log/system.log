@@ -1,0 +1,25 @@
+2022-06-27 19:09:30 [DEBUG] ##############################  INIT  ##############################
+2022-06-27 19:09:30 [DEBUG] System starting. Session name=default. Iteration count=0
+2022-06-27 19:09:30 [DEBUG] Computing unlabeled data from /home/ec2-user/SageMaker/data/GM_all_1945_1956/ and /home/ec2-user/SageMaker/data/GM_all_1957-1967/
+2022-06-27 19:15:50 [DEBUG] Creating labeled data from scratch
+2022-06-27 19:15:50 [DEBUG] len(unlabeled_data)=2049401
+2022-06-27 19:15:50 [DEBUG] len(labeled_data)=0
+2022-06-27 19:21:32 [DEBUG] Session directories do not exist, creating (data, log, models).
+2022-07-01 18:48:33 [DEBUG] ##############################  INIT  ##############################
+2022-07-01 18:48:33 [DEBUG] Not starting from scratch. However, finish function provided. It will be used during loop but not in init.
+2022-07-01 18:48:33 [DEBUG] System starting. Session name=default. Iteration count=0
+2022-07-01 18:48:33 [DEBUG] Computing labeled data from "labeled_data.csv"
+2022-07-01 18:48:33 [DEBUG] Computing unlabeled data from /home/ec2-user/SageMaker/data/GM_all_1945_1956/ and /home/ec2-user/SageMaker/data/GM_all_1957-1967/
+2022-07-01 18:48:57 [DEBUG] len(unlabeled_data)=2042223
+2022-07-01 18:48:57 [DEBUG] len(labeled_data)=7178
+2022-07-01 18:48:57 [DEBUG] len(labeled_data)=7178 <1293118416,1291398730, ... ,1289157923,1287816582>
+2022-07-01 18:48:57 [DEBUG] len(unlabeled_data)=2042223 <1289203819,1270422908, ... ,1270344159,1288470622>
+2022-07-01 18:49:01 [DEBUG] Creating the model from scratch. Need training.
+2022-07-01 18:49:01 [DEBUG] Starting training of models.
+2022-07-01 18:49:01 [DEBUG] Training each of the 2 classifiers.
+2022-07-01 18:49:01 [DEBUG] Training model <Clasifier vec_type=B trained=False model=MLPClassifier(early_stopping=True,hidden_layer_sizes=(20,),max_iter=1500,n_iter_no_change=20,random_state=RandomState(MT19937)at0x7FF9FEC55240)>
+2022-07-01 18:49:10 [DEBUG] Training model <Clasifier vec_type=G3 trained=False model=MLPClassifier(early_stopping=True,max_iter=1500,n_iter_no_change=20,random_state=RandomState(MT19937)at0x7FF9FEC55840)>
+2022-07-01 18:49:15 [DEBUG] Training term highlighter.
+2022-07-01 18:49:17 [DEBUG] Done training.
+2022-07-01 18:49:17 [DEBUG] Finished training of models.
+2022-07-01 18:49:17 [DEBUG] ##############################   END INIT  ##############################
