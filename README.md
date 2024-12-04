@@ -8,14 +8,14 @@
 
 
 ## High Recall Information Retrieval System Overview:
-One of the main features of the repo is its Jupyter Notebook-based graphical user interface for a high-recall information retrieval system. The goal is to help users find all relevant documents for their information needs from a large pool with minimal annotations. The system calculates the number of annotations needed to achieve high recall and works iteratively, suggesting batches of documents to label. It uses a smart selection strategy to pick the documents that will maximize the classifier's learning.
+One of the key features of the repository is its Jupyter Notebook-based graphical user interfaces for performing high-recall information retrieval. The goal is to assist users in identifying all relevant documents from a large pool with minimal annotations. The system operates iteratively, suggesting batches of documents to label. It employs a smart selection strategy to identify documents that will maximize the classifier's learning.
 
-For each suggestion, the user labels documents as either "relevant" or "irrelevant" based on their information needs. The system relies on three machine learning models that classify each document as "relevant" or "irrelevant." Once the annotation process is complete, the system runs these models as an ensemble on all the documents and exports those classified as relevant.
+For each suggestion, the user labels documents as either "relevant" or "irrelevant" based on their information needs. The system relies on one or more machine learning models to classify each document as "relevant" or "irrelevant." Once the annotation process is complete, the system applies the final ML models to all the documents and exports those classified as relevant. The repository features two versions: one that uses active learning and another that incorporates Scalable Continuous Active Learning (SCAL).
 
-For example, in one of our research questions, we used this system to analyze 2,961,906 articles, labeled just 315 of them, and filtered the results down to 17,014 relevant articles.
+For example, in one of our research studies, we utilized the SCAL system to analyze 2,961,906 articles, labeling just 315 of them, and filtered the results down to 17,014 relevant articles.
 
 
-## High Recall Information Retrieval System Detailed Description (First version)
+## High Recall Information Retrieval using Active Learning (First version)
 The main files of the first version are `utils.ui.py` and `utils.high_recall_information_retrieval.py`. The notebook `System V1.0.ipynb` is used to launch the first version of the system with the following piece of code:
 
 ```Python
@@ -30,17 +30,18 @@ The user interface class (`utils.ui.UI`) has a `system` attribute of type `utils
 ```Python
     high_recall_information_retrieval.HRSystem.loop(...)
 ```
-The `loop` method is part of an active learning process where a model suggests data points that need to be labeled by a user. It starts by preparing and checking the data to ensure no interruptions or duplicates, then calculates new suggestions based on the model’s current understanding. These suggestions are presented to the user for annotation, and once labeled, they are added to the model’s training data. The model is then retrained with the newly labeled data. This process repeats iteratively, improving the model each time by incorporating new, labeled examples. If no new suggestions are found, the loop is skipped, but a final function is always called to handle any cleanup. The method handles the calling of the `after_labeling` and the cancel and finish functions (`cancel_process_fn`, `finish_process_fn`).
+The `loop` method is part of an active learning process where a model suggests data points that need to be labeled by a user. It starts by preparing and checking the data to ensure no interruptions or duplicates, then calculates new suggestions based on the model’s current understanding. These suggestions are presented to the user for annotation, and once labeled, they are added to the model’s training data. The model is then retrained with the newly labeled data. This process repeats iteratively, improving the model each time by incorporating new, labeled examples. If no new suggestions are found, the `loop` is skipped, but a final function is always called to handle any cleanup. The method handles the calling of the `after_labeling` and the cancel and finish functions (`cancel_process_fn`, `finish_process_fn`).
 
 ```Python
     high_recall_information_retrieval.HRSystem.save()
 ```
-The `save` method saaves the current state of the system, including labeled data, unlabeled data, and iteration count, to disk. The method is called when the user clicks the `SAVE` button on the user interface.
+The `save` method saves the current state of the system, including labeled data, unlabeled data, and iteration count, to disk. The method is called when the user clicks the `SAVE` button on the user interface.
 
 
 ```Python
     high_recall_information_retrieval.HRSystem.export(...)
 ```
+
 The `export` method exports relevant articles from the labeled and potentially suggested data to a CSV file and optionally sends the file via email. The suggestions are calculated with a ML model trained with the latest data. 
 
 
@@ -48,7 +49,7 @@ The `export` method exports relevant articles from the labeled and potentially s
     high_recall_information_retrieval.HRSystem.review_labeled(...)
 ```
 
-The method `review_label` allows the user to correct already labeled items. It allows to review a specified number of labeled items, allowing for corrections to their labels. After reviewing, it retrains the model if changes are made to the labels. The method displays the reviewed items, compares the original and new labels, and logs the results.
+The method `review_label` allows the user to correct already labeled items. It allows reviewing a specified number of labeled items, allowing for corrections to their labels. After reviewing, it retrains the model if changes are made to the labels. The method displays the reviewed items, compares the original and new labels, and logs the results.
 
 
 ```Python
@@ -65,9 +66,7 @@ The `status` method displays the status of the HRSystem, including details about
 
 The methods `get_labeled_count`, `get_unlabeled_count`, and `get_relevant_count` return the number of labeled instances, the number of unlabeled instances, and the number of relevant items in the labeled set, respectively.
 
-
-
-## High Recall Information Retrieval System Detailed Description (Last versions)
+## High Recall Information Retrieval using SCAL (Last versions)
 After the first version, I updated the implementation of high-recall information retrieval to utilize the Scalable Continuous Learning (SCAL) approach. The following Jupyter notebooks employ the SCAL methodology:
 
 1. System.ipynb
@@ -99,17 +98,11 @@ Class used to represent real and synthetic data items with functionality for lab
 
 
 **`utils.oracle.Oracle`**
-The Oracle class offers methods for managing and analyzing a collection of data items, with a 
-specific focus on relevance labeling and generating document representations. It enables the 
-retrieval and handling of a pre-labeled collection of items, serving as a ground-truth oracle 
-by allowing users to query the relevance label for any instance in the collection. 
-The collection included in the oracle was created through manual annotation.
+The Oracle class offers methods for managing and analyzing a collection of data items, with a specific focus on relevance labeling and generating document representations. It enables the retrieval and handling of a pre-labeled collection of items, serving as a ground-truth oracle by allowing users to query the relevance label for any instance in the collection. The collection included in the oracle was created through manual annotation.
 
 
 **`from utils.data_item.QueryDataItem`**
-The `QueryDataItem` class represents a synthetic data item specifically designed for 
-query-based analysis. It enables the conversion of a user input query into a data item, 
-providing an interface consistent with the `utils.data_item.DataItem` class.
+The `QueryDataItem` class represents a synthetic data item specifically designed for query-based analysis. It enables the conversion of a user input query into a data item, providing an interface consistent with the `utils.data_item.DataItem` class.
 
 
 **`utils.scal_ui.SCAL_UI`** and **`utils.scal.SCAL`**
@@ -147,10 +140,11 @@ After the system is running, the `run` method repeatedly calls `utils.scal.SCAL.
     # end of run
 ```
 
-The `utils.scal.SCAL.loop` method orchestrates the iterative process of labeling and model training in the SCAL system. It begins by extending the labeled dataset with randomly selected documents and trains a new classification model. Using the updated model, it identifies the most relevant documents from the unlabeled pool and samples a batch for further annotation. These documents are presented to the user for labeling (unless in simulation mode, where the process advances automatically and the labels are obtained from the `Oracle`). The method updates annotations and tracks progress, iteratively refining the classifier and selecting documents until the loop completes all iterations. It ensures model storage, computes recall thresholds, and prepares the system for the final classification step. The `loop` method invokes the `myversions.pigeonXT.annotate` method from the `pigeonXT` class, which prompts the user for labels through a minimalist user interface.
+The `utils.scal.SCAL.loop` method orchestrates the iterative process of labeling and model training in the SCAL system. It begins by extending the labeled dataset with randomly selected documents and trains a new classification model. Using the updated model, it identifies the most relevant documents from the unlabeled pool and samples a batch for further annotation. These documents are presented to the user for labeling (unless in simulation mode, where the process advances automatically and the labels are obtained from the `Oracle`). The method updates annotations and tracks progress, iteratively refining the classifier and selecting documents until the `loop` completes all iterations. It ensures model storage, computes recall thresholds, and prepares the system for the final classification step. The `loop` method invokes the `myversions.pigeonXT.annotate` method from the `pigeonXT` class, which prompts the user for labels through a minimalist user interface.
 
 
-The two main methods besides the SAL system besides `loop` are:**`utils.scal.SCAL.after_loop`** and **`utils.scal.SCAL.finish`**. 
+The two main methods, besides `loop`, in the SCAL system are:**`utils.scal.SCAL.after_loop`** and **`utils.scal.SCAL.finish`**. 
+
 
 The `after_loop` method manages updates and maintain the system's state after each iteration of the SCAL process. It tracks labeled and unlabeled items, updates user-provided or simulated labels, and ensures consistency in the labeling. The method recalculates key metrics like precision, true positives, and recall estimates. Additionally, it expands the labeled collection, removes processed items from the unlabeled pool, and logs progress for debugging and evaluation. If there are unlabeled items remaining, it prepares for the next iteration; otherwise, it finalizes the process.
 
@@ -178,8 +172,8 @@ We also used the 20 Newsgroups dataset to simulate various high-recall informati
 
 For more details on the simulation results using these datasets, refer to the repositories:
 
-- [\[Link to repository 1\]](https://github.com/mmaisonnave/hrir-train-test-simulations)
-- [\[Link to repository 2\]](https://github.com/mmaisonnave/hrir-simulation-results)
+- [Link to repository 1](https://github.com/mmaisonnave/hrir-train-test-simulations)
+- [Link to repository 2](https://github.com/mmaisonnave/hrir-simulation-results)
 
 Additionally, in the notebooks/10_computing_new_scores_on_old_suggestions_(17k_and_8k) folder, we analyzed around 17,000 suggestions from the first round of SCAL and 8,000 suggestions from the second round for the multiculturalism research topic.
 
