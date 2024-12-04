@@ -1,8 +1,49 @@
+"""
+This module provides a `Tokenizer` class for processing and extracting meaningful tokens and n-grams 
+from text. It leverages the SpaCy NLP library for linguistic processing and includes utility methods 
+to handle punctuation, validate tokens, and calculate n-gram indices.
+
+Classes:
+--------
+Tokenizer : 
+    A class for tokenizing text, filtering valid tokens, and generating n-grams with optional index 
+    information.
+
+Functions:
+----------
+Tokenizer._remove_punctuation(word):
+    Removes punctuation and whitespace from a given word.
+
+Tokenizer._is_valid_word(word):
+    Checks if a word is valid (not numeric, has no punctuation, and is longer than one character).
+
+Tokenizer.tokenize(str_, include_index=False):
+    Tokenizes the input string into lemmatized, lowercased tokens, excluding stop words and 
+    invalid tokens. Optionally returns token start and end indices.
+
+Tokenizer._bigrams(list_):
+    Generates bigrams from a list of tokens.
+
+Tokenizer._trigrams(list_):
+    Generates trigrams from a list of tokens.
+
+Tokenizer.ngrams(list_):
+    Combines bigrams and trigrams for a list of tokens.
+
+Tokenizer.ngrams_and_indexes(str_):
+    Tokenizes input text, generates n-grams, and returns both n-grams and their corresponding indices.
+
+Tokenizer._ngram_index(indexes):
+    Computes the start and end indices for n-grams based on the indices of individual tokens.
+
+Dependencies:
+-------------
+- string: Used for handling punctuation.
+- spacy: NLP library for tokenization and linguistic processing. Requires the 'en_core_web_sm' model.
+"""
+
 import string
 import spacy
-
-
-
 
 class Tokenizer(object):
     def __init__(self):

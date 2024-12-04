@@ -1,3 +1,11 @@
+"""
+Utility Functions for Interactive and Log-Based Operations
+
+This module provides a set of utility functions for logging, displaying HTML content, 
+collecting user input interactively, and confirming user actions. It is designed 
+for use in Jupyter Notebook environments, leveraging IPython widgets for interactivity.
+
+"""
 from IPython.core.display import display, HTML
 import datetime
 from ipywidgets import Textarea, Button, HBox

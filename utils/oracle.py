@@ -5,6 +5,24 @@ from utils.tdmstudio import get_title_and_text
 
 import spacy 
 class Oracle(object):
+    """
+    The Oracle class offers methods for managing and analyzing a collection of data items, with a 
+    specific focus on relevance labeling and generating document representations. It enables the 
+    retrieval and handling of a pre-labeled collection of items, serving as a ground-truth oracle 
+    by allowing users to query the relevance label for any instance in the collection.
+
+    Attributes:
+        distilbert_path (str): Path to the pre-trained DistilBERT model for sentence embeddings.
+        label_file (str): Path to the CSV file containing relevance labels for data items.
+        precomputed_folder (str): Directory containing precomputed vector representations of documents.
+        data_path (str): Directory containing the raw XML files for the data items.
+        id2label (dict): Mapping of document IDs to their corresponding relevance labels.
+
+    Methods:
+        is_relevant(data_item): Checks if a given DataItem is labeled as relevant ('R').
+        get_collection(): Retrieves the entire collection of DataItems with known labels.
+        get_document_representation(type_): Generates document representations using BoW, GloVe, or SBERT embeddings.
+    """
     distilbert_path = '/home/ec2-user/SageMaker/mariano/huggingface/pretrained/distilbert-base-uncased/'
 
     label_file = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/labeled_data_latest_08072022.csv'

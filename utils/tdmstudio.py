@@ -1,4 +1,23 @@
+"""
+This module provides utilities for processing data files in the format provided by TDM Studio datasets. 
 
+It includes functions to:
+- Extract and clean the title and text content from TDM XML files.
+- Retrieve the title only from TDM XML files.
+- Locate a file in a specified root directory by its ID.
+- Extract the publication date from TDM XML files.
+
+Dependencies:
+- `lxml` for XML parsing.
+- `bs4` (BeautifulSoup) for cleaning extracted text.
+
+Functions:
+- `get_title_and_text(filename: str) -> str`: Extracts and concatenates the title and body text of a TDM XML file.
+- `get_title(filename: str) -> str`: Extracts the title of a TDM XML file.
+- `get_filename(id_: str) -> str`: Finds the full path of an XML file based on a given ID.
+- `get_date(filename: str) -> str`: Extracts the publication date from a TDM XML file.
+
+"""
 from lxml import etree
 from bs4 import BeautifulSoup
 

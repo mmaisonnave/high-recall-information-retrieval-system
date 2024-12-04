@@ -1,3 +1,35 @@
+"""
+Module for handling data representation, preprocessing, and vectorization for 
+Machine Learning models, particularly those utilizing Bag-of-Words (BoW), GloVe embeddings, 
+and synthetic document analysis.
+
+Classes:
+    DataItem:
+        Represents a real or synthetic data item with functionality for label management, 
+        vector generation, and metadata extraction.
+
+    QueryDataItem:
+        Handles text input for queries, providing vectorization and label management. 
+        Primarily designed for user-defined or synthetic text input.
+
+    GenericSyntheticDocument:
+        General-purpose class for handling synthetic documents with customizable vocabulary 
+        and inverse document frequency (IDF) values.
+
+Functions:
+    get_vocab_path():
+        Returns the default file path for the vocabulary file.
+
+    get_idf_path():
+        Returns the default file path for the IDF file.
+
+Usage:
+    - Instantiate `DataItem` to handle existing datasets or file-based documents.
+    - Use `QueryDataItem` or `GenericSyntheticDocument` for user-defined or synthetic text input.
+    - Perform vectorization for Machine Learning tasks using BoW or embedding-based methods.
+    - Generate and display document views for visualization or debugging.
+"""
+
 import os
 from lxml import etree
 from bs4 import BeautifulSoup
@@ -286,6 +318,38 @@ from utils.tokenizer import Tokenizer
 from scipy import sparse
 
 class QueryDataItem(object):
+    """
+    The `QueryDataItem` class represents a synthetic data item specifically designed for 
+    query-based analysis. It enables the conversion of a user input query into a data item, 
+    providing an interface consistent with the `utils.data_item.DataItem` class.
+
+    Attributes:
+        idf (numpy.ndarray): Precomputed inverse document frequency (IDF) values for terms.
+        vocab (list): List of vocabulary terms used for vectorization.
+        word2index (dict): Mapping of vocabulary terms to their indices in the vector representation.
+        tokenizer (Tokenizer): Tokenizer instance for processing text.
+
+    Methods:
+        __init__(str_): Initializes a QueryDataItem instance with a given text string.
+        _dict(): Returns a dictionary representation of the item with its text and label.
+        from_dict(dict_): Creates a QueryDataItem instance from a dictionary containing text and label.
+        is_synthetic(): Indicates that the item is synthetic.
+        vector(type_): Computes a vector representation of the item's text using the specified vectorization type.
+        has_vector(): Confirms that the item has a vector representation.
+        get_vec_size(type_): Returns the size of the vector representation based on the specified type.
+        is_relevant(): Checks if the item is labeled as relevant.
+        is_irrelevant(): Checks if the item is labeled as irrelevant.
+        set_relevant(): Sets the item's label to relevant.
+        set_irrelevant(): Sets the item's label to irrelevant.
+        assign_label(label): Assigns a relevance label (relevant or irrelevant) to the item.
+        get_htmldocview(): Generates an HTML string for displaying the item's text in a document viewer.
+
+    Notes:
+        - The vector method currently supports Bag-of-Words (BoW) representations.
+        - IDF and vocabulary must be precomputed and available in the specified paths for vectorization.
+        - Labels for the item are managed using constants from the DataItem class.
+    """
+
 #     vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/vocab_with_dp.txt'
 #     vocab_path = '/home/ec2-user/SageMaker/mariano/notebooks/07. Simulation/precomputed/vocab.txt'
 #     vocab_path = 

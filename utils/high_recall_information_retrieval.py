@@ -404,6 +404,23 @@ class HRSystem(object):
     #                        SAVE LISTS                            #   
     ################################################################        
     def save(self):   
+        """
+        Saves the current state of the system, including labeled data, unlabeled data, 
+        and iteration count, to disk. This method performs the following steps:
+        
+        1. Asserts that there are no pending suggestions to be moved to labeled data.
+        2. Logs debug messages regarding the saving process and the creation or overwriting
+           of relevant files.
+        3. Serializes and saves the labeled data, unlabeled data, and iteration count to 
+           their respective file paths using `pickle`.
+        4. Invokes the `_models_todisk` method to save the models to disk.
+        5. Displays a message indicating the save process has completed.
+
+
+        Raises:
+            AssertionError: If there are pending suggestions in `self.suggestions`, as this 
+                            method expects no suggestions to be pending before saving.
+        """
         assert len(self.suggestions)==0
 #         if len(self.suggestions)>0:
 #             logging.debug('Attemping to save system\'s state but there are labeled suggestions to be stored first. Re-train required.')
@@ -501,6 +518,31 @@ class HRSystem(object):
     #                             LOOP                             #   
     ################################################################  
     def loop(self, suggestion_sample_size=1000, labeling_batch_size=10, confidence_value=0.5, full_search=True, one_iteration=False ): 
+        """
+        Runs an active learning loop that generates suggestions, annotates them, and retrains the model 
+        with the newly labeled data.
+
+        The method performs the following steps:
+        1. Verifies the loop state and prepares data for processing.
+        2. Configures loop parameters like batch size, confidence value, and suggestion sample size.
+        3. Computes new suggestions for labeling based on the current model state.
+        4. Presents new suggestions for user annotation via the `pixt.annotate` method.
+        5. Moves labeled suggestions to the labeled data pool and triggers retraining of the model.
+        6. Calls a `finish_function` after the annotation process is completed.
+
+        Args:
+            suggestion_sample_size (int): Number of suggestions to sample per iteration. Default is 1000.
+            labeling_batch_size (int): Number of samples to label per batch. Default is 10.
+            confidence_value (float): Minimum confidence score for a suggestion to be considered. Default is 0.5.
+            full_search (bool): Whether to perform a full search for new suggestions or a limited one. Default is True.
+            one_iteration (bool): If True, only a single loop iteration will be executed. Default is False.
+
+        Raises:
+            AssertionError: If there are issues with the loop state or if duplicate IDs are found in the data.
+
+        Notes:
+            The method relies on a `finish_function` and a `cancel_loop` function being defined for post-processing.
+        """
         self.print_fn('[LOOP] Starting loop...')
         assert len(self.suggestions)==0 and not self.loop_started # if a loop was interrupted in the middle, the suggestions must be moved
                                                                   # to the unlabeled_data list
@@ -761,6 +803,32 @@ class HRSystem(object):
     #                            EXPORT                            #   
     ################################################################  
     def export(self, suggestion_sample_size=1000,  confidence_value=0.5, send_email=False, compute_suggestions=False):
+        """
+        Exports relevant articles from the labeled and potentially suggested data to a CSV file and optionally sends the file via email.
+
+        This method performs the following steps:
+        
+        1. Logs the start of the export process and validates that no suggestions are pending.
+        2. Writes labeled data that are marked as relevant to a CSV file.
+        3. Optionally computes suggestions for unlabeled data using the model and writes those to the CSV file as well.
+        4. Optionally sends the CSV file to a specified S3 bucket via email using AWS S3, after creating a temporary copy.
+        
+        Parameters:
+            suggestion_sample_size (int): The number of suggestions to compute (default is 1000). Only used if `compute_suggestions` is True.
+            confidence_value (float): The confidence threshold for considering suggestions (default is 0.5). Only used if `compute_suggestions` is True.
+            send_email (bool): Whether to send the exported file via email (default is False).
+            compute_suggestions (bool): Whether to compute suggestions based on unlabeled data (default is False).
+        
+        Raises:
+            AssertionError: If there are pending suggestions in `self.suggestions` (this method expects no suggestions to be pending before exporting).
+            FileNotFoundError: If the generated file cannot be found when sending the email.
+        
+        Notes:
+            - The CSV file will contain columns for `URL`, `relevant_or_suggested` (either 'rel' or 'sugg'), and `confidence`.
+            - The file is saved to the `sessions/{self.session_name}/data/` directory with a timestamped filename.
+            - If `compute_suggestions` is True, the model will generate suggestions for unlabeled data, which will be saved to the CSV with their respective confidence values.
+            - If `send_email` is True, the file will be uploaded to an S3 bucket after being copied and sent.
+        """
         logging.debug('#'*30+' EXPORT '+'#'*30)
         self.confidence_value = confidence_value
         self.suggestion_sample_size =  suggestion_sample_size
@@ -843,6 +911,24 @@ class HRSystem(object):
         remaining = width-len(output)
         return output+' '*(remaining-1)+'#'
     def status(self):
+        """
+        Displays the status of the HRSystem, including details about labeled and unlabeled data, relevant and irrelevant articles,
+        classifier performance metrics, and confusion matrix for each model in the system.
+
+        The output includes:
+        - System header with the current status title.
+        - Summary of labeled and unlabeled articles, and their classification status (relevant or irrelevant).
+        - Detailed performance metrics for each classifier and model, including training and testing accuracy, precision, recall, and F1-score.
+        - The confusion matrix for each model showing True Negative (TN), False Positive (FP), False Negative (FN), and True Positive (TP) values.
+
+        The status report also indicates if any suggestions are estimated and provides a summary of the classifiers' performance.
+        Each model’s results are logged for further analysis.
+
+        Logs:
+            - Performance metrics (train and test) for each classifier.
+            - Confusion matrix values for each model.
+
+        """
         width = 100
         print('#'*width)
 
@@ -972,6 +1058,37 @@ class HRSystem(object):
     
                       
     def review_labeled(self, how_many=20):
+        """
+        Reviews a specified number of labeled items (default is 20), allowing for corrections to their labels. After reviewing, 
+        it retrains the model if changes are made to the labels. The method displays the reviewed items, compares the original and 
+        new labels, and logs the results.
+
+        Parameters:
+            how_many (int): The number of labeled items to review (default is 20). It limits the review to the most recent items in the labeled data.
+
+        Raises:
+            AssertionError: If there are pending suggestions in `self.suggestions`, as this method expects no suggestions to be pending before reviewing.
+
+        Behavior:
+            - Displays the labeled items to be reviewed, providing a mechanism for annotators to correct labels.
+            - Compares the existing labels with the corrected labels and counts the number of changes.
+            - If any changes are made, it logs the changes, retrains the model using the updated labels, and provides feedback to the user.
+            - If no changes are made, it simply logs that no retraining is needed.
+            - Calls a `finish_function`, if defined, after the review process is complete.
+
+        Workflow:
+            1. Asserts that there are no pending suggestions to be reviewed.
+            2. Displays the most recent `how_many` labeled items for review.
+            3. Annotates the items using an external tool (`pixt.annotate`).
+            4. Upon completing the review, compares the labels and logs any changes.
+            5. If changes are made, retrains the model using the updated labels.
+            6. Optionally calls a `finish_function` after completing the review process.
+
+        Notes:
+            - The method assumes that the annotations are either relevant or irrelevant, and these are defined by the system labels.
+            - The retraining step occurs only if there are changes to the labels; otherwise, no retraining is performed.
+            - The reviewed data is passed to an external annotation tool (`pixt.annotate`) for manual or automated labeling.
+        """
         self.print_fn(f'[REVIEW] Reviewing {how_many} items...')
         logging.debug(f'{how_many} items are being REVISED...')
         def after_reviewing():
@@ -1031,7 +1148,3 @@ class HRSystem(object):
                                         )
         
         
-        # CORREGIR self.labeled.
-        # REPORTAR CNATIDAD DE CAMBIOS. 
-        
-        # if changes need retrain. Do here?

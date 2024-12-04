@@ -575,6 +575,46 @@ class SCAL(object):
             return f'<{item_list[0].id_}({item_list[0].label}), {item_list[1].id_}({item_list[1].label}), ..., {item_list[-2].id_}({item_list[-2].label}), {item_list[-1].id_}({item_list[-1].label})>'
             
     def loop(self):
+        """
+        Executes the main iterative loop for the labeling and model training process.
+        In every iteration, all data items are presented to the user again, including previously labeled 
+        items and new suggestions for labeling. Previously labeled items are shown with their user-assigned 
+        labels, while suggestions display the model-predicted labels.
+
+        The system starts by showing the first suggestion. Moving backward lets the user revisit and correct 
+        previously reviewed items, while moving forward displays the next suggestions. During each iteration, 
+        users can update labels they have already assigned or correct the model's suggested labels.
+
+        Once the updated labels are stored, the next loop trains a new model using the latest labeled data. 
+        This includes the new suggestions with user-corrected labels and previously labeled items that may 
+        have been adjusted.
+
+
+    
+        This method performs the following steps:
+        1. Extends the labeled collection with a random selection of documents.
+        2. Trains a new classification model based on the extended collection.
+        3. Identifies the most relevant documents from the unlabeled pool using the ranking function.
+        4. Samples a batch of documents for further annotation.
+        5. Displays the selected documents to the user (if not in simulation mode) 
+        and collects annotations for the batch.
+        6. Updates the annotations and continues the process until all iterations are completed.
+
+        Attributes updated:
+            - `self.models`: Appends the newly trained model.
+            - `self.sorted_docs`: Stores documents sorted by relevance.
+            - `self.random_sample_from_batch`: Contains the randomly sampled batch for annotation.
+            - `self.all_texts`: Updates the list of all document texts displayed.
+            - `self.annotations`: Stores the user's annotations (in non-simulation mode).
+
+        Note:
+            In simulation mode, annotations are skipped, and the process transitions directly
+            to the next iteration.
+
+        The storage of all models (not just the last one) and the tracking of Rhat, r, and 
+        other variables are required to compute the threshold for the final classifier in a 
+        manner that ensures a specific level of recall.
+        """
         # STATUS BAR
         if not self.simulation:
             print('-'*109)
@@ -656,6 +696,41 @@ class SCAL(object):
             self.after_loop()
         
     def after_loop(self):
+    """
+    Performs post-iteration updates and bookkeeping after each loop in the SCAL process.  
+
+    The bookkeeping tracks labeled and unlabeled items, the model’s performance to date (such as Rhat, precision), 
+    and other estimations needed to compute the final threshold.  
+
+    Choosing the right threshold for the final classifier ensures high recall, meeting our requirements.  
+
+    This method performs the following actions:
+    - Updates the labeled collection and validates label consistency.
+    - Handles label updates based on user-provided annotations or simulation results.
+    - Updates the unlabeled collection by removing labeled items and logging changes.
+    - Tracks and logs metrics such as precision, true positives, and relevant articles found.
+    - Adjusts the threshold (`Tj`) for the classifier and updates related variables.
+    - Logs the current state of the SCAL system, including statistics for labeled and unlabeled collections.
+    - Prepares for the next iteration or finalizes the process if no more unlabeled data remains.
+
+    Key variables updated:
+    - `all_labels`: Stores the updated labels for all items in the labeled collection.
+    - `labeled_collection`: Expands with newly labeled data items.
+    - `random_unlabeled_collection`: Updates by removing labeled items from the pool of unlabeled data.
+    - `precision_estimates`: Tracks precision metrics for each iteration.
+    - `Rhat`: Tracks the estimated number of relevant articles found.
+    - `B`: Adjusts the batch size for the next iteration.
+
+    Logging and Debugging:
+    - Logs various metrics, including precision, true positives, and relevant articles identified.
+    - Outputs detailed summaries of the labeled and unlabeled collections after each iteration.
+
+    If more unlabeled data remains, this method triggers the next iteration of the loop. Otherwise, 
+    it calls the `finish` method to finalize the SCAL process.
+
+    Raises:
+    - AssertionError: If label consistency checks fail.
+    """
         if not self.simulation:
             new_labels =  list(self.annotations["label"])
             assert len(new_labels[:-self.b]) == len(self.all_labels)
@@ -739,6 +814,45 @@ class SCAL(object):
 
 
     def finish(self):
+    """
+    Finalizes the SCAL process by completing the following steps:
+
+    1. **Metrics Calculation and Threshold Selection**:
+    - Estimates prevalence based on the current model and labeled data.
+    - Determines the expected number of relevant items in the dataset using target recall.
+    - Identifies the iteration where the desired recall is achieved and calculates the classification threshold for 
+      final predictions.
+
+    2. **Labeled Data Export**:
+    - Saves all labeled data to a file for further analysis.
+    - Logs the labeled data statistics, including counts of relevant and irrelevant articles.
+
+    3. **Final Model Training**:
+    - Builds a final classifier using the complete labeled dataset to improve prediction accuracy.
+
+    4. **Unlabeled Data Prediction**:
+    - Applies the final model to the remaining unlabeled data to identify additional potentially relevant 
+      items using the identify threshold to achieve the desire recall. 
+    - Exports predicted relevant items with confidence scores.
+
+    5. **Simulation and Performance Metrics** (if applicable):
+    - Evaluates model performance (accuracy, precision, recall, F1-score) against ground truth in a simulation 
+      environment.
+    - Logs detailed simulation results, including confusion matrix components.
+
+    6. **File Export and Cloud Upload**:
+    - Prepares the final output file for export, containing relevant and suggested articles with their 
+      confidence scores.
+    - Optionally uploads the file to a specified cloud storage location if not in simulation mode.
+
+    Returns:
+    - A list of relevant data items and their associated confidence scores.
+
+    Raises:
+    - AssertionError: If file preparation or exporting fails.
+    """
+
+
         print('Preparing for exporting ... (this could take around 3 hours)')
         logging.debug(f'SCAL PROCESS FINISHED. Process finished. Number of labeled articles={len(self.labeled_collection)}'\
                                            f' Number of unlabeled articles in the random sample={len(self.random_unlabeled_collection)}')

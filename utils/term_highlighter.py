@@ -1,3 +1,27 @@
+"""
+Module for identifying and highlighting terms with significant influence on a classification task.
+
+The module implements the `TermHighlighter` class, which encapsulates a Logistic Regression model
+trained to classify documents as "relevant" or "irrelevant." After training, the highlighter instance can 
+be used to highlight the most influential terms in a document that contribute to its classification 
+as either "relevant" or "irrelevant." 
+
+Key functionalities:
+- Train the Logistic Regression model using a bag-of-words (BoW) representation of labeled documents.
+- Highlight terms in a given text based on their contribution to the classification decision.
+- Serialize and deserialize model configurations and parameters for persistence.
+- Evaluate model performance through cross-validation.
+- Generate sorted lists of terms based on their importance scores.
+
+Dependencies:
+- scikit-learn: For implementing and managing the Logistic Regression model.
+- spacy: For text processing and tokenization.
+- numpy, scipy, and pandas: For efficient data manipulation and numerical computations.
+- tqdm: For progress visualization during computations.
+- joblib and json: For serialization of the model and its configuration.
+- Custom utilities (`utils.data_item` and `utils.tokenizer`) for data handling and tokenization.
+"""
+
 from sklearn.linear_model import LogisticRegression
 import numpy as np
 import spacy

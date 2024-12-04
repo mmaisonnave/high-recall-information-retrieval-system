@@ -1,8 +1,22 @@
+"""
+
+This module implements the `UI` class, an interactive graphical interface for managing 
+High-Recall Information Retrieval (HRIR) tasks. The `UI` leverages Jupyter Widgets to 
+provide a user-friendly environment for initializing sessions, iterating through labeling 
+tasks, reviewing labeled data, and exporting results.
+
+The `UI` serves as the frontend for the logic implemented in the
+`utils.high_recall_information_retrieval.HRSystem` class. This represents an initial approach to 
+HRIR developed during the research process. The methodology later evolved to leverage 
+Scalable Continuous Active Learning (SCAL), which is implemented in 
+`utils.scal.SCAL` and its corresponding interfaces in `utils.scal_ui.SCAL_UI` and 
+`myversions.pigeonXT`.
+
+
+"""
+
 from utils.high_recall_information_retrieval import HRSystem
 from bs4 import BeautifulSoup
-
-
-
 
 import os
 from IPython.display import display, clear_output

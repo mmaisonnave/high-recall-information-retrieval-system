@@ -1,3 +1,66 @@
+"""
+Module: SCAL_UI
+
+This module provides an interactive user interface for managing and initiating sessions of SCAL 
+(Selective Continuous Active Learning), which is used for labeling data and exploring topics 
+in an information retrieval system. The interface is built using `ipywidgets` and integrates 
+with Jupyter Notebook.
+
+Classes:
+--------
+- SCAL_UI:
+    An interactive widget-based interface to create, load, or extend SCAL sessions. It provides
+    options for session selection, topic description, and keyword management. Users can initiate 
+    or resume SCAL processes seamlessly.
+
+Usage:
+------
+1. Import the SCAL_UI module:
+    ```python
+    from utils.scal_ui import SCAL_UI
+    ```
+
+2. Define a callback function for session initialization:
+    ```python
+    def start_system(session_name, topic_description):
+        # Define logic to handle session startup
+        pass
+    ```
+
+3. Create an instance of SCAL_UI and pass the callback function:
+    ```python
+    ui = SCAL_UI(start_system, second_round=True)
+    ```
+
+4. Use the UI within a Jupyter Notebook to interact with SCAL sessions.
+
+Features:
+---------
+- Session Management:
+    - Combobox to select existing sessions or create new ones.
+    - Automatically filters sessions for specific conditions when `second_round=True`.
+
+- Topic Description:
+    - Dynamically updates based on user input.
+    - The topic can only be defined with keywords within the vocabulary of `QueryDataItem` (obtained from GloVe vocab).
+    - Provides a list of predefined keywords from `QueryDataItem`.
+
+- Keyword Buttons:
+    - Allows users to add, display, and remove keywords interactively.
+
+- Button Actions:
+    - 'START' or 'LOAD' session based on session availability.
+    - Trigger the callback function with session details.
+
+Dependencies:
+-------------
+- os: For file and directory operations.
+- ipywidgets: For building interactive widgets.
+- IPython.display: For rendering UI components in Jupyter.
+- utils.data_item.QueryDataItem: Provides keyword suggestions and mappings.
+
+"""
+
 import os
 import ipywidgets as widgets
 from utils.data_item import QueryDataItem
@@ -90,3 +153,4 @@ class SCAL_UI(object):
 
         display(widgets.VBox([self.session_name_widget,self.topic_description_widget,self.main_button]))
         display(self.keyword_box)
+
