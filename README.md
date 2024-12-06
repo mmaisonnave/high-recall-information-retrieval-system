@@ -1,10 +1,10 @@
 # High Recall Information Retrieval System Applied to Social Science Research
 
-![Contributors](https://img.shields.io/github/contributors/mmaisonnave/unplanned-hospital-readmission-prediction?style=plastic)
-![Forks](https://img.shields.io/github/forks/mmaisonnave/unplanned-hospital-readmission-prediction)
-![Stars](https://img.shields.io/github/stars/mmaisonnave/unplanned-hospital-readmission-prediction)
-![GitHub](https://img.shields.io/github/license/mmaisonnave/unplanned-hospital-readmission-prediction?style=round-square)
-![Issues](https://img.shields.io/github/issues/mmaisonnave/unplanned-hospital-readmission-prediction)
+![Contributors](https://img.shields.io/github/contributors/mmaisonnave/high-recall-information-retrieval-system?style=plastic)
+![Forks](https://img.shields.io/github/forks/mmaisonnave/high-recall-information-retrieval-system)
+![Stars](https://img.shields.io/github/stars/mmaisonnave/high-recall-information-retrieval-system)
+![GitHub](https://img.shields.io/github/license/mmaisonnave/high-recall-information-retrieval-system?style=round-square)
+![Issues](https://img.shields.io/github/issues/mmaisonnave/high-recall-information-retrieval-system)
 
 
 ## High Recall Information Retrieval System Overview:
